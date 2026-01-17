@@ -1,30 +1,26 @@
 'use client'
 import { useState, useEffect } from 'react'
-import Sidebar from '@/components/Sidebar'
 import InterviewStage from '@/components/InterviewStage'
 import VoiceLab from '@/components/VoiceLab'
+import HistoryPanel from '@/components/HistoryPanel'
 import Auth from '@/components/Auth'
 import { PERSONAS } from '@/lib/personas'
 import { supabase } from '@/lib/supabase'
 import '@/styles/globals.css'
+import { History, ChevronDown, LogOut } from 'lucide-react'
 
 export default function Home() {
   const [user, setUser] = useState(null)
-  const [sessions, setSessions] = useState([
-    { id: 0, title: 'React Performance Viva' },
-    { id: 1, title: 'Google Behavioral Round' },
-    { id: 2, title: 'System Design: WhatsApp' },
-    { id: 3, title: 'Leadership Scenario Prep' },
-  ])
-  const [activeSession, setActiveSession] = useState(0)
+  const [conversations, setConversations] = useState([])
+  const [activeConversation, setActiveConversation] = useState(null)
+  const [activeIndex, setActiveIndex] = useState(0)
   const [selectedPersona, setSelectedPersona] = useState(PERSONAS[0])
   const [isVoiceLabOpen, setIsVoiceLabOpen] = useState(false)
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isLive, setIsLive] = useState(false)
-  const [voices, setVoices] = useState([
-    { id: 1, name: 'Shambhu', description: 'Technical Architect' },
-    { id: 2, name: 'Shreyas', description: 'HR Director' },
-    { id: 3, name: 'Shreya', description: 'Product Manager' },
-  ])
+  const [customPersonas, setCustomPersonas] = useState([])
+  const [allPersonas, setAllPersonas] = useState(PERSONAS)
+  const [voices, setVoices] = useState([])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -38,30 +34,45 @@ export default function Home() {
     return () => subscription.unsubscribe()
   }, [])
 
-  const handleNewInterview = () => {
-    const newSession = {
-      id: sessions.length,
-      title: `Interview ${sessions.length + 1}`
+  const handleNewConversation = () => {
+    const newConv = {
+      id: conversations.length + 1,
+      title: `Interview ${conversations.length + 1}`,
+      persona: selectedPersona.name,
+      date: new Date(),
+      messageCount: 0
     }
-    setSessions([newSession, ...sessions])
-    setActiveSession(newSession.id)
+    setConversations([newConv, ...conversations])
+    setActiveConversation(newConv.id)
   }
 
-  const handleRenameSession = (sessionId, newTitle) => {
-    setSessions(sessions.map(s => s.id === sessionId ? { ...s, title: newTitle } : s))
+  const handleRenameConversation = (convId, newTitle) => {
+    setConversations(conversations.map(c => c.id === convId ? { ...c, title: newTitle } : c))
   }
 
   const handleStartSpeaking = () => {
     setIsLive(!isLive)
   }
 
-  const handleVoiceCloned = () => {
-    const newVoice = {
-      id: voices.length + 1,
-      name: 'My Voice',
-      description: 'Custom cloned voice'
+  const handleVoiceCloned = (voiceData) => {
+    const newPersona = {
+      name: voiceData.name,
+      role: 'Custom Voice',
+      color: voiceData.gender === 'female' ? '#FF6B9D' : '#4ECDC4',
+      avatar: voiceData.avatar,
+      voiceId: voiceData.voiceId || 'custom_voice_id',
+      isCustom: true,
+      systemPrompt: `You are ${voiceData.name}, conducting an interview practice session. Be professional, encouraging, and ask thoughtful questions to help the user improve their interview skills.`
     }
-    setVoices([...voices, newVoice])
+    const updatedCustom = [...customPersonas, newPersona]
+    setCustomPersonas(updatedCustom)
+    setAllPersonas([...PERSONAS, ...updatedCustom])
+    
+    // Auto-select the new custom persona
+    const newIndex = allPersonas.length
+    setActiveIndex(newIndex)
+    setSelectedPersona(newPersona)
+    
     setTimeout(() => setIsVoiceLabOpen(false), 1500)
   }
 
@@ -70,48 +81,158 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen bg-[#050507] text-slate-200 font-sans">
-      
-      <Sidebar 
-        sessions={sessions}
-        activeSession={activeSession}
-        onSessionClick={setActiveSession}
-        onNewInterview={handleNewInterview}
-        onRenameSession={handleRenameSession}
-        user={user}
-      />
-
-      <main className="flex-1 flex flex-col relative overflow-hidden">
-        
-        <div className="absolute inset-0 bg-gradient-to-br from-violet-950/20 via-transparent to-indigo-950/20" />
-        <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-violet-600/5 blur-[120px] rounded-full" />
-
-        <header className="h-16 flex items-center justify-between px-8 border-b border-slate-800/30 backdrop-blur-sm z-10">
+    <div className="flex h-screen text-[#DCE6F1]">
+      {/* Top Nav Bar */}
+      <header className="fixed top-0 left-0 right-0 h-[66px] z-50 flex items-center px-[4%]" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0))' }}>
+        <div className="w-[30%] flex items-center gap-2">
+          <div className="flex flex-col">
+            <h1 className="text-[18px] font-semibold text-primary">IVY</h1>
+            <div className="h-[1px] w-8 bg-[#45D6FF]" />
+            <p className="text-[11px] text-secondary">Interview Virtual You</p>
+          </div>
+        </div>
+        <div className="w-[40%] flex justify-center">
+          <div className="px-6 py-2 rounded-full border border-transparent hover:border-[rgba(255,255,255,0.1)] transition-all" style={{ opacity: 0.8 }}>
+            <span className="text-sm font-medium text-primary">Dashboard</span>
+          </div>
+        </div>
+        <div className="w-[30%] flex justify-end">
           <div className="flex items-center gap-3">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-            <span className="text-xs font-medium text-slate-500">Session Active</span>
+            <button
+              onClick={() => setIsHistoryOpen(true)}
+              className="w-9 h-9 rounded-lg hover:bg-[rgba(255,255,255,0.05)] flex items-center justify-center transition-all icon-inactive hover:opacity-100"
+            >
+              <History size={18} />
+            </button>
+            <div className="relative group">
+              <button className="flex items-center gap-3 px-4 py-2 rounded-full bg-[rgba(255,255,255,0.03)] hover:bg-[rgba(255,255,255,0.05)] transition-all">
+                <div className="w-7 h-7 rounded-full bg-[#5E6BFF] flex items-center justify-center text-xs font-semibold" style={{ filter: 'saturate(0.7)' }}>
+                  {user?.email?.[0]?.toUpperCase()}
+                </div>
+                <span className="text-xs text-metadata">User</span>
+                <ChevronDown size={14} className="icon-inactive" />
+              </button>
+              
+              {/* Dropdown */}
+              <div className="absolute right-0 top-full mt-2 w-40 rounded-xl bg-[rgba(11,16,24,0.95)] backdrop-blur-xl border border-[rgba(255,255,255,0.05)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 overflow-hidden">
+                <div className="p-2">
+                  <button 
+                    onClick={async () => {
+                      await supabase.auth.signOut()
+                      setUser(null)
+                    }}
+                    className="w-full px-4 py-2.5 rounded-lg text-left text-sm hover:bg-[rgba(255,120,120,0.08)] transition-all flex items-center gap-3"
+                    style={{ color: 'rgba(255,120,120,0.8)' }}
+                  >
+                    <LogOut size={14} />
+                    Log out
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="text-xs text-slate-600 font-mono">
-            {new Date().toLocaleTimeString()}
-          </div>
-        </header>
+        </div>
+      </header>
 
-        <div className="flex-1 flex flex-col p-8 z-10">
-          <div className="max-w-7xl w-full mx-auto">
-            <header className="text-center mb-8">
-              <h2 className="text-3xl font-black text-white mb-2">Interview Practice</h2>
-              <p className="text-slate-500 text-sm">Select a voice and start your session</p>
-            </header>
-
-            <InterviewStage 
-              selectedPersona={selectedPersona}
-              onStartSpeaking={handleStartSpeaking}
-              isLive={isLive}
-              voices={voices}
-              onVoiceSelect={(voice) => console.log('Selected:', voice)}
-              onOpenVoiceLab={() => setIsVoiceLabOpen(true)}
-            />
+      {/* Main Content */}
+      <main className="flex-1 flex pt-[66px] px-[3%] py-6 gap-8 overflow-hidden">
+        {/* Left Panel - Persona Carousel */}
+        <div className="w-[55%] flex flex-col justify-center">
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold text-primary mb-1">Choose Your Interviewer</h2>
+            <p className="text-[10px] text-description">Swipe to explore personas</p>
           </div>
+
+          {/* Persona Carousel */}
+          <div className="relative h-[350px] flex items-center justify-center overflow-hidden">
+            <div className="relative w-full flex items-center justify-center">
+              {allPersonas.map((persona, index) => {
+                const diff = (index - activeIndex + allPersonas.length) % allPersonas.length
+                const isActive = diff === 0
+                const isPrev = diff === allPersonas.length - 1
+                const isNext = diff === 1
+                
+                let position = 0
+                if (isActive) position = 0
+                else if (isPrev) position = -1
+                else if (isNext) position = 1
+                else position = 2
+
+                return (
+                  <div
+                    key={persona.name}
+                    onClick={() => {
+                      setActiveIndex(index)
+                      setSelectedPersona(persona)
+                    }}
+                    className="absolute cursor-pointer transition-all duration-500 ease-out group"
+                    style={{
+                      opacity: isActive ? 1 : 0.5,
+                      transform: `translateX(${position * 300}px) scale(${isActive ? 1 : 0.85})`,
+                      filter: isActive ? 'none' : 'blur(0.5px)',
+                      zIndex: isActive ? 10 : 5,
+                      pointerEvents: Math.abs(position) > 1 ? 'none' : 'auto',
+                      visibility: Math.abs(position) > 1 ? 'hidden' : 'visible'
+                    }}
+                  >
+                    <div 
+                      className="w-[240px] h-[300px] rounded-2xl bg-[rgba(255,255,255,0.02)] p-5 flex flex-col items-center justify-center transition-all duration-500"
+                      style={{
+                        boxShadow: isActive ? `0 20px 40px rgba(0,0,0,0.7), inset 0 0 0 1px ${persona.color}60` : 'none'
+                      }}
+                    >
+                      <div 
+                        className="w-24 h-24 rounded-full mb-5 flex items-center justify-center text-2xl transition-all duration-500 overflow-hidden"
+                        style={{
+                          background: persona.color,
+                          boxShadow: isActive ? `0 0 25px ${persona.color}50` : 'none'
+                        }}
+                      >
+                        {persona.avatar ? (
+                          <img 
+                            src={persona.avatar} 
+                            alt={persona.name}
+                            className="w-full h-full object-cover object-top"
+                          />
+                        ) : (
+                          <span className="text-white font-bold text-lg">{persona.name?.[0]}</span>
+                        )}
+                        {persona.isCustom && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const updatedCustom = customPersonas.filter(p => p.name !== persona.name)
+                              setCustomPersonas(updatedCustom)
+                              setAllPersonas([...PERSONAS, ...updatedCustom])
+                              if (selectedPersona.name === persona.name) {
+                                setActiveIndex(0)
+                                setSelectedPersona(PERSONAS[0])
+                              }
+                            }}
+                            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center text-white text-xs transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                      <h3 className="text-lg font-semibold text-primary mb-1.5">{persona.name}</h3>
+                      <p className="text-[10px] uppercase tracking-wider text-secondary">{persona.role}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel - Active Persona */}
+        <div className="w-[45%] rounded-[28px] p-6 flex items-center justify-center" style={{ background: 'radial-gradient(120% 120% at 50% 30%, rgba(79, 209, 255, 0.08), rgba(8, 12, 18, 1) 70%)' }}>
+          <InterviewStage 
+            selectedPersona={selectedPersona}
+            onStartSpeaking={handleStartSpeaking}
+            isLive={isLive}
+            onOpenVoiceLab={() => setIsVoiceLabOpen(true)}
+          />
         </div>
       </main>
 
@@ -119,6 +240,15 @@ export default function Home() {
         isOpen={isVoiceLabOpen}
         onClose={() => setIsVoiceLabOpen(false)}
         onVoiceCloned={handleVoiceCloned}
+      />
+
+      <HistoryPanel
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        conversations={conversations}
+        activeConversation={activeConversation}
+        onSelectConversation={setActiveConversation}
+        onRenameConversation={handleRenameConversation}
       />
     </div>
   )
