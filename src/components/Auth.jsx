@@ -15,7 +15,10 @@ export default function Auth({ onAuthSuccess }) {
     setLoading(true)
 
     try {
+      console.log('Attempting auth with:', { email, isSignUp })
+      
       if (isSignUp) {
+        console.log('Signing up...')
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -23,26 +26,48 @@ export default function Auth({ onAuthSuccess }) {
             data: { full_name: fullName }
           }
         })
+        console.log('Sign up result:', { data, error })
         if (error) throw error
-        if (data.user) onAuthSuccess(data.user)
+        if (data.user) {
+          console.log('Sign up successful, user:', data.user)
+          onAuthSuccess(data.user)
+        }
       } else {
+        console.log('Signing in...')
         const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password
         })
+        console.log('Sign in result:', { data, error })
         if (error) throw error
-        if (data.user) onAuthSuccess(data.user)
+        if (data.user) {
+          console.log('Sign in successful, user:', data.user)
+          onAuthSuccess(data.user)
+        }
       }
     } catch (error) {
-      alert(error.message)
+      console.error('Auth error:', error)
+      alert(`Authentication failed: ${error.message}`)
     } finally {
       setLoading(false)
     }
   }
 
   const handleOAuthLogin = async (provider) => {
-    const { error } = await supabase.auth.signInWithOAuth({ provider })
-    if (error) alert(error.message)
+    try {
+      console.log('Attempting OAuth login with:', provider)
+      const { data, error } = await supabase.auth.signInWithOAuth({ 
+        provider,
+        options: {
+          redirectTo: window.location.origin
+        }
+      })
+      console.log('OAuth result:', { data, error })
+      if (error) throw error
+    } catch (error) {
+      console.error('OAuth error:', error)
+      alert(`OAuth login failed: ${error.message}`)
+    }
   }
 
   return (
@@ -88,10 +113,19 @@ export default function Auth({ onAuthSuccess }) {
             <button 
               type="submit" 
               disabled={loading}
-              className="w-full py-3 rounded-[14px] font-semibold uppercase tracking-wider transition-all disabled:opacity-50 hover:shadow-[0_0_20px_rgba(69,214,255,0.3)] text-sm"
+              className="w-full py-3 rounded-[14px] font-semibold uppercase tracking-wider transition-all disabled:opacity-50 hover:shadow-[0_0_20px_rgba(69,214,255,0.3)] text-sm mb-3"
               style={{ background: 'linear-gradient(135deg, #45D6FF, #5E6BFF)', color: '#EAF1F7' }}
             >
               {loading ? 'Loading...' : 'Sign In'}
+            </button>
+            
+            {/* Temporary bypass for development */}
+            <button 
+              type="button"
+              onClick={() => onAuthSuccess({ id: 'dev-user', email: 'dev@test.com' })}
+              className="w-full py-2 rounded-[14px] font-medium text-xs border border-[#45D6FF]/30 text-[#45D6FF] hover:bg-[#45D6FF]/10 transition-all"
+            >
+              Skip Auth (Dev)
             </button>
           </form>
         </div>

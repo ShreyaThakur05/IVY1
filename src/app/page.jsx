@@ -19,7 +19,15 @@ export default function Home() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isLive, setIsLive] = useState(false)
   const [customPersonas, setCustomPersonas] = useState([])
-  const [allPersonas, setAllPersonas] = useState(PERSONAS)
+  const [allPersonas, setAllPersonas] = useState([...PERSONAS, {
+    name: 'Custom Persona',
+    role: 'Add Your Voice',
+    color: '#666666',
+    avatar: null,
+    voiceId: null,
+    isCustom: true,
+    hasVoice: false
+  }])
   const [voices, setVoices] = useState([])
 
   useEffect(() => {
@@ -55,25 +63,65 @@ export default function Home() {
   }
 
   const handleVoiceCloned = (voiceData) => {
-    const newPersona = {
-      name: voiceData.name,
-      role: 'Custom Voice',
-      color: voiceData.gender === 'female' ? '#FF6B9D' : '#4ECDC4',
-      avatar: voiceData.avatar,
-      voiceId: voiceData.voiceId || 'custom_voice_id',
+    // Update only the selected persona immediately
+    const updatedPersona = {
+      ...selectedPersona,
+      name: voiceData.voiceName,
+      role: `Custom ${voiceData.gender === 'female' ? 'Female' : 'Male'} Voice`,
+      avatar: voiceData.gender === 'female' ? '/assets/female-generic.jpg' : '/assets/male-generic.jpg',
+      voiceId: voiceData.voiceId,
       isCustom: true,
-      systemPrompt: `You are ${voiceData.name}, conducting an interview practice session. Be professional, encouraging, and ask thoughtful questions to help the user improve their interview skills.`
+      hasVoice: true
     }
-    const updatedCustom = [...customPersonas, newPersona]
-    setCustomPersonas(updatedCustom)
-    setAllPersonas([...PERSONAS, ...updatedCustom])
     
-    // Auto-select the new custom persona
-    const newIndex = allPersonas.length
-    setActiveIndex(newIndex)
-    setSelectedPersona(newPersona)
+    // Update personas array
+    const updatedPersonas = allPersonas.map(persona => 
+      persona === selectedPersona ? updatedPersona : persona
+    )
     
-    setTimeout(() => setIsVoiceLabOpen(false), 1500)
+    // Update states immediately to prevent lag
+    setSelectedPersona(updatedPersona)
+    setAllPersonas(updatedPersonas)
+    
+    // Add a new empty custom persona slot only if none exists
+    addEmptyCustomPersona()
+  }
+
+  const addEmptyCustomPersona = () => {
+    // Only add if there isn't already an empty custom persona
+    const hasEmptyCustom = allPersonas.some(p => p.name === 'Custom Persona' && !p.voiceId)
+    if (hasEmptyCustom) return
+    
+    const newPersona = {
+      name: 'Custom Persona',
+      role: 'Add Your Voice',
+      color: '#666666',
+      avatar: null,
+      voiceId: null,
+      isCustom: true,
+      hasVoice: false
+    }
+    
+    setAllPersonas(prev => [...prev, newPersona])
+  }
+
+  const addCustomPersona = () => {
+    // Find existing empty custom persona or create one
+    const emptyCustomIndex = allPersonas.findIndex(p => p.name === 'Custom Persona' && !p.voiceId)
+    
+    if (emptyCustomIndex !== -1) {
+      setActiveIndex(emptyCustomIndex)
+      setSelectedPersona(allPersonas[emptyCustomIndex])
+      setIsVoiceLabOpen(true)
+    } else {
+      addEmptyCustomPersona()
+      setTimeout(() => {
+        const newIndex = allPersonas.length
+        setActiveIndex(newIndex)
+        setSelectedPersona(allPersonas[newIndex])
+        setIsVoiceLabOpen(true)
+      }, 100)
+    }
   }
 
   if (!user) {
@@ -137,7 +185,7 @@ export default function Home() {
       {/* Main Content */}
       <main className="flex-1 flex pt-[66px] px-[3%] py-6 gap-8 overflow-hidden">
         {/* Left Panel - Persona Carousel */}
-        <div className="w-[55%] flex flex-col justify-center">
+        <div className="w-[58%] flex flex-col justify-center">
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-primary mb-1">Choose Your Interviewer</h2>
             <p className="text-[10px] text-description">Swipe to explore personas</p>
@@ -160,7 +208,7 @@ export default function Home() {
 
                 return (
                   <div
-                    key={persona.name}
+                    key={`${persona.name}-${index}`}
                     onClick={() => {
                       setActiveIndex(index)
                       setSelectedPersona(persona)
@@ -176,13 +224,13 @@ export default function Home() {
                     }}
                   >
                     <div 
-                      className="w-[240px] h-[300px] rounded-2xl bg-[rgba(255,255,255,0.02)] p-5 flex flex-col items-center justify-center transition-all duration-500"
+                      className="w-[240px] h-[300px] rounded-2xl bg-[rgba(255,255,255,0.02)] p-5 flex flex-col items-center justify-center transition-all duration-500 relative"
                       style={{
                         boxShadow: isActive ? `0 20px 40px rgba(0,0,0,0.7), inset 0 0 0 1px ${persona.color}60` : 'none'
                       }}
                     >
                       <div 
-                        className="w-24 h-24 rounded-full mb-5 flex items-center justify-center text-2xl transition-all duration-500 overflow-hidden"
+                        className="w-24 h-24 rounded-full mb-5 flex items-center justify-center text-2xl transition-all duration-500 overflow-hidden relative"
                         style={{
                           background: persona.color,
                           boxShadow: isActive ? `0 0 25px ${persona.color}50` : 'none'
@@ -197,42 +245,72 @@ export default function Home() {
                         ) : (
                           <span className="text-white font-bold text-lg">{persona.name?.[0]}</span>
                         )}
-                        {persona.isCustom && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              const updatedCustom = customPersonas.filter(p => p.name !== persona.name)
-                              setCustomPersonas(updatedCustom)
-                              setAllPersonas([...PERSONAS, ...updatedCustom])
-                              if (selectedPersona.name === persona.name) {
-                                setActiveIndex(0)
-                                setSelectedPersona(PERSONAS[0])
-                              }
-                            }}
-                            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center text-white text-xs transition-all opacity-0 group-hover:opacity-100"
-                          >
-                            ×
-                          </button>
-                        )}
+                        
+                      {/* Custom voice indicator */}
+                      {persona.hasVoice && (
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+                          <span className="text-white text-xs">✓</span>
+                        </div>
+                      )}
                       </div>
                       <h3 className="text-lg font-semibold text-primary mb-1.5">{persona.name}</h3>
                       <p className="text-[10px] uppercase tracking-wider text-secondary">{persona.role}</p>
+                      
+                      {/* Delete button for custom personas with voices */}
+                      {persona.isCustom && persona.hasVoice && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            const updatedPersonas = allPersonas.filter((_, i) => i !== index)
+                            setAllPersonas(updatedPersonas)
+                            if (selectedPersona.name === persona.name) {
+                              setActiveIndex(0)
+                              setSelectedPersona(updatedPersonas[0])
+                            }
+                          }}
+                          className="absolute top-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center text-white text-xs transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          ×
+                        </button>
+                      )}
                     </div>
                   </div>
                 )
               })}
+              
+              {/* Add Custom Persona Button */}
+              <div
+                onClick={addCustomPersona}
+                className="absolute cursor-pointer transition-all duration-500 ease-out"
+                style={{
+                  opacity: 0.3,
+                  transform: `translateX(${(allPersonas.length - activeIndex) * 300}px) scale(0.85)`,
+                  zIndex: 5,
+                  pointerEvents: 'auto'
+                }}
+              >
+                <div className="w-[240px] h-[300px] rounded-2xl bg-[rgba(255,255,255,0.02)] border-2 border-dashed border-[rgba(255,255,255,0.1)] p-5 flex flex-col items-center justify-center transition-all duration-500 hover:border-[#45D6FF] hover:opacity-60">
+                  <div className="w-24 h-24 rounded-full mb-5 flex items-center justify-center text-4xl transition-all duration-500 border-2 border-dashed border-[rgba(255,255,255,0.2)]">
+                    <span className="text-[#45D6FF] font-bold text-3xl">+</span>
+                  </div>
+                  <h3 className="text-lg font-semibold text-[#45D6FF] mb-1.5">Add Custom</h3>
+                  <p className="text-[10px] uppercase tracking-wider text-secondary">Create Persona</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Right Panel - Active Persona */}
-        <div className="w-[45%] rounded-[28px] p-6 flex items-center justify-center" style={{ background: 'radial-gradient(120% 120% at 50% 30%, rgba(79, 209, 255, 0.08), rgba(8, 12, 18, 1) 70%)' }}>
-          <InterviewStage 
-            selectedPersona={selectedPersona}
-            onStartSpeaking={handleStartSpeaking}
-            isLive={isLive}
-            onOpenVoiceLab={() => setIsVoiceLabOpen(true)}
-          />
+        <div className="w-[42%] rounded-[28px] p-4 flex items-center justify-center min-h-0" style={{ background: 'radial-gradient(120% 120% at 50% 30%, rgba(79, 209, 255, 0.08), rgba(8, 12, 18, 1) 70%)' }}>
+          <div className="w-full h-full max-h-[600px] overflow-hidden">
+            <InterviewStage 
+              selectedPersona={selectedPersona}
+              onStartSpeaking={handleStartSpeaking}
+              isLive={isLive}
+              onOpenVoiceLab={() => setIsVoiceLabOpen(true)}
+            />
+          </div>
         </div>
       </main>
 
@@ -240,6 +318,7 @@ export default function Home() {
         isOpen={isVoiceLabOpen}
         onClose={() => setIsVoiceLabOpen(false)}
         onVoiceCloned={handleVoiceCloned}
+        selectedPersona={selectedPersona}
       />
 
       <HistoryPanel
