@@ -4,9 +4,10 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { createRequire } from 'module';
-import { createInterviewSession, getSession, addHistory } from "../services/interviewSession.js";
+import { createInterviewSession, getSession, addHistory, getSessionHistory } from "../services/interviewSession.js";
 import { transcribeAudio, generateRAGResponse } from "../services/openaiService.js";
 import { setVoicePersona } from "../services/voiceStorage.js";
+import { conversationFlow } from "../services/conversationFlow.js";
 
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse').default || require('pdf-parse');
@@ -93,44 +94,21 @@ async function extractTextFromFile(filePath, mimetype) {
 // 1. START INTERVIEW
 router.post("/start", upload.single('source_file'), async (req, res) => {
   try {
-    // DETAILED DEBUGGING - Log everything received
     console.log('\n=== START INTERVIEW REQUEST DEBUG ===');
     console.log('req.body:', req.body);
     console.log('req.file:', req.file ? { filename: req.file.filename, size: req.file.size } : 'No file');
-    console.log('req.body.persona_name:', JSON.stringify(req.body.persona_name));
-    console.log('req.body.interview_topic:', JSON.stringify(req.body.interview_topic));
-    console.log('typeof persona_name:', typeof req.body.persona_name);
-    console.log('typeof interview_topic:', typeof req.body.interview_topic);
-    console.log('persona_name length:', req.body.persona_name?.length);
-    console.log('interview_topic length:', req.body.interview_topic?.length);
     console.log('=====================================\n');
     
-    const { persona_name, interview_topic } = req.body;
+    const { persona_name, interview_topic, user_id } = req.body;
     
-    // More specific validation with detailed error messages
-    if (!persona_name) {
-      console.log('❌ VALIDATION FAILED: persona_name is missing or falsy');
-      return res.status(400).json({ error: "Missing persona_name" });
+    if (!persona_name || !interview_topic || !user_id) {
+      return res.status(400).json({ error: "Missing required fields: persona_name, interview_topic, user_id" });
     }
     
-    if (!interview_topic) {
-      console.log('❌ VALIDATION FAILED: interview_topic is missing or falsy');
-      return res.status(400).json({ error: "Missing interview_topic" });
-    }
+    console.log(`✅ Starting interview for user: ${user_id}, persona: ${persona_name}, topic: ${interview_topic}`);
     
-    if (typeof persona_name !== 'string' || persona_name.trim() === '') {
-      console.log('❌ VALIDATION FAILED: persona_name is not a valid string');
-      return res.status(400).json({ error: "Invalid persona_name" });
-    }
-    
-    if (typeof interview_topic !== 'string' || interview_topic.trim() === '') {
-      console.log('❌ VALIDATION FAILED: interview_topic is not a valid string');
-      return res.status(400).json({ error: "Invalid interview_topic" });
-    }
-    
-    console.log(`✅ VALIDATION PASSED - Starting interview for persona: ${persona_name}, topic: ${interview_topic}`);
-    
-    let context = `Topic: ${interview_topic}`;
+    let primary_topic = interview_topic;
+    let document_reference = null;
 
     // Extract text if file provided
     if (req.file) {
@@ -138,10 +116,9 @@ router.post("/start", upload.single('source_file'), async (req, res) => {
       try {
         const extractedText = await extractTextFromFile(req.file.path, req.file.mimetype);
         if (extractedText && extractedText.trim()) {
-          context += `\n\nSOURCE CONTENT:\n${extractedText}`;
+          document_reference = req.file.originalname;
+          primary_topic = `${interview_topic} (Document: ${req.file.originalname})`;
           console.log(`[START] Extracted ${extractedText.length} characters from source file`);
-        } else {
-          console.warn('[START] No text extracted from source file');
         }
       } catch (error) {
         console.error('[START] File processing error:', error);
@@ -151,16 +128,31 @@ router.post("/start", upload.single('source_file'), async (req, res) => {
       }
     }
 
-    const sessionId = createInterviewSession({ persona_name, context });
+    const sessionId = await createInterviewSession({ 
+      user_id, 
+      persona_name, 
+      primary_topic,
+      document_reference
+    });
+    
     if (!sessionId) {
       throw new Error('Failed to create interview session');
     }
     console.log(`[START] Created session: ${sessionId}`);
     
-    // Generate opening question with error handling
+    // Initialize conversation flow
+    conversationFlow.initializeSession(sessionId, persona_name);
+    
+    // Generate opening question
     try {
-      const openingMsg = await generateRAGResponse(context, [], "Start the interview. Welcome me warmly and ask me to introduce myself. Keep it under 30 words.");
-      addHistory(sessionId, 'assistant', openingMsg);
+      const openingMsg = await generateRAGResponse(
+        `Topic: ${primary_topic}`, 
+        [], 
+        "Start the interview. Welcome me warmly and ask me to introduce myself. Keep it under 30 words.",
+        sessionId,
+        persona_name
+      );
+      await addHistory(sessionId, 'assistant', openingMsg);
       
       console.log(`[START] Generated opening: ${openingMsg}`);
 
@@ -173,7 +165,7 @@ router.post("/start", upload.single('source_file'), async (req, res) => {
     } catch (error) {
       console.error('[START] AI generation error:', error);
       const fallbackMsg = `Hello! I'm ${persona_name}. Let's start your ${interview_topic} interview. Please introduce yourself.`;
-      addHistory(sessionId, 'assistant', fallbackMsg);
+      await addHistory(sessionId, 'assistant', fallbackMsg);
       
       res.json({
         session_id: sessionId,
@@ -201,10 +193,13 @@ router.post("/chat", upload.single('audio_file'), async (req, res) => {
   }
 
   try {
-    const session = getSession(session_id);
+    const session = await getSession(session_id);
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+
+    // Get conversation history
+    const history = await getSessionHistory(session_id);
 
     // A. Transcribe with better error handling
     let userText;
@@ -223,20 +218,25 @@ router.post("/chat", upload.single('audio_file'), async (req, res) => {
       cleanupFile(audioFile.path);
     }
 
-    addHistory(session_id, 'user', userText);
+    await addHistory(session_id, 'user', userText);
+
+    // Process user input through conversation flow
+    conversationFlow.processUserInput(session_id, userText);
 
     // B. Generate AI Response with fallback
     let aiText;
     try {
       console.log(`[CHAT] Generating AI response...`);
-      aiText = await generateRAGResponse(session.context, session.history, userText);
+      const context = `Topic: ${session.primary_topic || session.title}`;
+      aiText = await generateRAGResponse(context, history, userText, session_id, session.persona_name);
       console.log(`🤖 AI replied: "${aiText}"`);
     } catch (error) {
       console.error('[CHAT] AI generation error:', error);
       aiText = "That's interesting. Could you tell me more about your experience with that?";
+      conversationFlow.processAIResponse(session_id, aiText);
     }
     
-    addHistory(session_id, 'assistant', aiText);
+    await addHistory(session_id, 'assistant', aiText);
 
     res.json({
       message: aiText,
@@ -349,47 +349,103 @@ router.post("/analyze", async (req, res) => {
       return res.status(400).json({ error: "Missing session_id" });
     }
     
-    const session = getSession(session_id);
+    const session = await getSession(session_id);
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
     
     console.log(`[ANALYZE] Starting analysis for session: ${session_id}`);
     
+    // Get conversation history
+    const history = await getSessionHistory(session_id);
+    
     // Create analysis prompt
-    const conversation = session.history.map(msg => 
+    const conversation = history.map(msg => 
       `${msg.role === 'user' ? 'Candidate' : 'Interviewer'}: ${msg.content}`
     ).join('\n\n');
     
-    const analysisPrompt = `Analyze this interview conversation and provide detailed feedback:
+    const analysisPrompt = `You are an adaptive interview evaluator and conversational AI conducting and analyzing a speech-to-speech interview on a fixed topic or an uploaded reference document.
 
+Your behavior must be dynamic, context-aware, and evidence-driven.
+
+🚨 Score Scale Enforcement
+The final score MUST be out of 100
+You are strictly forbidden from:
+- Using /10, /5, or mixed scales
+- Writing outputs like 64/10
+Any score must be displayed as: Final Score: XX / 100
+
+🔍 Content Presence Validation (Critical)
+Before assigning any meaningful score, you MUST first validate:
+Did the candidate actually speak about the topic or document content?
+
+Apply this decision flow before scoring:
+- No topical content detected → Cap score at 0–15 / 100, Skip depth-based evaluation
+- Minimal topical mention (very shallow) → Cap score at 30 / 100
+- Clear topical engagement → Full scoring allowed
+
+This gating must influence all parameters.
+
+🎯 Scoring Rules (Strict)
+Scores must be:
+- Evidence-based
+- Proportional to content quality
+- Impossible to reach "average" without substance
+
+DO NOT:
+- Default to mid-range scores
+- Reward participation alone
+- Reuse previous session scores
+
+📊 Evaluation Parameters (Adaptive Use)
+Score each parameter out of 10, then apply the weight:
+
+1. Topic Understanding & Accuracy (20%)
+2. Spoken Clarity & Articulation (15%)
+3. Communication Structure (15%)
+4. Depth of Explanation (15%)
+5. Responsiveness to Questions (10%)
+6. Verbal Confidence & Fluency (10%)
+7. Conversational Adaptability (10%)
+8. Filler & Noise Management (5%)
+
+📝 Analysis Report Requirements
+The final report MUST:
+- Show non-uniform scoring unless justified by evidence
+- Reference specific moments or responses from the conversation
+- Include unique strengths observed and unique improvement areas discovered
+- Template-style feedback is explicitly disallowed
+
+CONVERSATION TRANSCRIPT:
 ${conversation}
 
-Provide analysis in this format:
-- Overall Score (1-10): [score]
-- Strengths: [list key strengths]
-- Areas for Improvement: [specific areas to improve]
-- Detailed Feedback: [comprehensive feedback]
-
-Focus on communication skills, technical knowledge, problem-solving approach, and interview performance.`;
+Provide your analysis in this exact format:
+Final Score: [score] / 100
+Strengths: [specific strengths with evidence from conversation]
+Areas for Improvement: [actionable improvements with conversation references]
+Detailed Analysis: [parameter-by-parameter breakdown with specific scores and conversation-based justifications]`;
     
     const analysis = await generateRAGResponse("", [], analysisPrompt);
     
-    // Parse analysis (simplified)
-    const scoreMatch = analysis.match(/Overall Score.*?(\d+)/i);
-    const overall_score = scoreMatch ? parseInt(scoreMatch[1]) : 7;
+    // Parse analysis (improved parsing for Final Score format)
+    const scoreMatch = analysis.match(/Final Score:\s*(\d+)\s*\/\s*100/i);
+    const overall_score = scoreMatch ? parseInt(scoreMatch[1]) : 50;
+    
+    // Extract sections
+    const strengthsMatch = analysis.match(/Strengths:\s*([^\n]*(?:\n(?!Areas for Improvement|Detailed Analysis)[^\n]*)*)/i);
+    const improvementsMatch = analysis.match(/Areas for Improvement:\s*([^\n]*(?:\n(?!Detailed Analysis)[^\n]*)*)/i);
     
     const result = {
       session_id,
       overall_score,
       analysis: analysis,
-      strengths: "Good communication and clear explanations",
-      improvements: "Provide more specific examples and technical details",
-      conversation_history: session.history,
+      strengths: strengthsMatch ? strengthsMatch[1].trim() : "Communication skills demonstrated",
+      improvements: improvementsMatch ? improvementsMatch[1].trim() : "Focus on providing more detailed explanations",
+      conversation_history: history,
       analyzed_at: new Date().toISOString()
     };
     
-    console.log(`[ANALYZE] Analysis complete with score: ${overall_score}/10`);
+    console.log(`[ANALYZE] Analysis complete with score: ${overall_score}/100`);
     res.json(result);
     
   } catch (error) {

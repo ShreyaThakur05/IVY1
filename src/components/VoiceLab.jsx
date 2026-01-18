@@ -92,7 +92,7 @@ export default function VoiceLab({ isOpen, onClose, onVoiceCloned, selectedPerso
       // Use the blob directly - let backend handle the format
       formData.append('audio_file', audioBlob, 'recording.webm')
       
-      const response = await fetch('http://localhost:3001/api/interview/clone-voice', {
+      const response = await fetch('http://localhost:3002/api/interview/clone-voice', {
         method: 'POST',
         body: formData
       })

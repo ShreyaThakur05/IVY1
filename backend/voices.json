@@ -33,5 +33,12 @@
     "persona_id": "custom-initial",
     "created_at": 1768748943849,
     "fallback": true
+  },
+  "Hello": {
+    "voice_id": "21m00Tcm4TlvDq8ikWAM",
+    "name": "Hello",
+    "persona_id": "custom-initial",
+    "created_at": 1768751741359,
+    "fallback": true
   }
 }

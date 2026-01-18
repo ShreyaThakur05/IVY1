@@ -3,7 +3,7 @@ import { Mic, Volume2, Square, RotateCcw, Upload, X } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import VoiceWaveform from './VoiceWaveform'
 
-export default function InterviewStage({ selectedPersona, onStartSpeaking, isLive, onOpenVoiceLab, onNewConversation }) {
+export default function InterviewStage({ selectedPersona, onStartSpeaking, isLive, onOpenVoiceLab, onNewConversation, user }) {
   const [rotation, setRotation] = useState(0)
   const [isRecording, setIsRecording] = useState(false)
   const [audioLevel, setAudioLevel] = useState(0)
@@ -86,12 +86,33 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       return
     }
     
-    // AI says thank you before ending
+    // Terminate interview immediately
+    setIsInterviewActive(false)
+    
+    // Stop all current audio first
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause()
+      currentAudioRef.current.currentTime = 0
+      currentAudioRef.current = null
+    }
+    
+    if (speechSynthesis.speaking) {
+      speechSynthesis.cancel()
+    }
+    
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop()
+    }
+    
+    setIsRecording(false)
+    setAudioLevel(0)
+    
+    // AI says thank you after stopping current audio
     setIsAISpeaking(true)
     const thankYouMsg = "Thank you for the interview. It was great talking with you!"
     
     try {
-      const ttsResponse = await fetch('http://localhost:3001/api/tts', {
+      const ttsResponse = await fetch('http://localhost:3002/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -114,10 +135,12 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
         
         await audio.play()
       } else {
+        setIsAISpeaking(false)
         proceedWithAnalysis()
       }
     } catch (error) {
       console.error('Thank you TTS failed:', error)
+      setIsAISpeaking(false)
       proceedWithAnalysis()
     }
   }
@@ -127,7 +150,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
     
     try {
       const currentSessionId = sessionIdRef.current || localStorage.getItem('ivy_session_id')
-      const response = await fetch('http://localhost:3001/api/interview/analyze', {
+      const response = await fetch('http://localhost:3002/api/interview/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: currentSessionId })
@@ -141,13 +164,12 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
         
         // Save to conversation history
         const newConversation = {
-          id: Date.now(),
-          title: `Interview with ${selectedPersona?.name || 'AI'}`,
+          title: interviewTopic || 'General Interview',
           persona: selectedPersona?.name || 'AI',
-          date: new Date(),
           messageCount: analysis.conversation_history?.length || 0,
           analysis: analysis,
-          conversation: analysis.conversation_history || []
+          conversation: analysis.conversation_history || [],
+          date: new Date()
         }
         
         // Add to parent component's conversation list
@@ -205,7 +227,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
     
     try {
       // Check backend health first
-      const healthCheck = await fetch('http://localhost:3001/health')
+      const healthCheck = await fetch('http://localhost:3002/health')
       if (!healthCheck.ok) {
         throw new Error('Backend service unavailable')
       }
@@ -215,6 +237,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       const formData = new FormData()
       formData.append('persona_name', selectedPersona.name.trim())
       formData.append('interview_topic', finalTopic)
+      formData.append('user_id', user?.id || 'anonymous')
       
       if (sourceFile) {
         formData.append('source_file', sourceFile)
@@ -224,6 +247,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       console.log('\n=== FRONTEND REQUEST DEBUG ===');
       console.log('- persona_name:', JSON.stringify(selectedPersona.name.trim()));
       console.log('- interview_topic:', JSON.stringify(finalTopic));
+      console.log('- user_id:', JSON.stringify(user?.id || 'anonymous'));
       console.log('- source_file:', sourceFile ? sourceFile.name : 'No file');
       console.log('- FormData entries:');
       for (let [key, value] of formData.entries()) {
@@ -231,7 +255,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       }
       console.log('===============================\n');
       
-      const response = await fetch('http://localhost:3001/api/interview/start', {
+      const response = await fetch('http://localhost:3002/api/interview/start', {
         method: 'POST',
         body: formData
       })
@@ -425,7 +449,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       formData.append('audio_file', audioBlob, 'user_response.wav')
       formData.append('session_id', currentSessionId)
       
-      const response = await fetch('http://localhost:3001/api/interview/chat', {
+      const response = await fetch('http://localhost:3002/api/interview/chat', {
         method: 'POST',
         body: formData
       })
@@ -495,11 +519,8 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
         utterance.onend = () => {
           setIsAISpeaking(false)
           setTimeout(() => {
-            const currentSessionId = sessionIdRef.current || localStorage.getItem('ivy_session_id')
-            if (!isRecording && isInterviewActive && currentSessionId) {
+            if (!isRecording && isInterviewActive) {
               startRecording()
-            } else if (!currentSessionId) {
-              console.error('Session ID not available for recording')
             }
           }, 1500)
         }
@@ -508,7 +529,9 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
           console.error('Speech synthesis error:', e)
           setIsAISpeaking(false)
           setTimeout(() => {
-            if (!isRecording && isInterviewActive) startRecording()
+            if (!isRecording && isInterviewActive) {
+              startRecording()
+            }
           }, 1500)
         }
         
@@ -658,7 +681,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
             </div>
           </div>
         ) : analysisResult ? (
-          <div className="w-full max-w-md">
+          <div className="w-full max-w-md max-h-[70vh] overflow-y-auto">
             <div className="p-4 rounded-lg bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.1)]">
               <h3 className="text-lg font-semibold text-[#45D6FF] mb-3">Interview Analysis</h3>
               <div className="space-y-3">

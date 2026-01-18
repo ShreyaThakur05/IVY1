@@ -1,47 +1,110 @@
-import { v4 as uuidv4 } from "uuid";
+import { supabase } from './supabaseClient.js';
 
-const sessions = new Map();
+export async function createInterviewSession({ user_id, persona_name, primary_topic, document_reference }) {
+  try {
+    const title = primary_topic || `${persona_name} Interview`;
+    
+    const { data, error } = await supabase
+      .from('sessions')
+      .insert({
+        user_id,
+        title,
+        persona_name,
+        interview_mode: 'Interview',
+        primary_topic,
+        document_reference
+      })
+      .select()
+      .single();
 
-export function createInterviewSession({ persona_name, context }) {
-  const sessionId = uuidv4();
-  
-  if (!sessionId) {
-    console.error('Failed to generate session ID');
+    if (error) throw error;
+    return data.id;
+  } catch (error) {
+    console.error('Failed to create session:', error);
     return null;
   }
-  
-  sessions.set(sessionId, {
-    id: sessionId,
-    persona_name,
-    context,
-    history: [],
-    createdAt: Date.now()
-  });
-
-  return sessionId;
 }
 
-export function getSession(sessionId) {
-  return sessions.get(sessionId);
-}
+export async function getSession(sessionId) {
+  try {
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single();
 
-export function addHistory(sessionId, role, content) {
-  const session = sessions.get(sessionId);
-  if (session) {
-    session.history.push({ role, content });
-    // Keep history manageable (last 10 turns)
-    if (session.history.length > 20) {
-      session.history = session.history.slice(-20);
-    }
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Failed to get session:', error);
+    return null;
   }
 }
 
-// Legacy compatibility functions
+export async function addHistory(sessionId, role, content, audioUrl = null) {
+  try {
+    const { error } = await supabase
+      .from('messages')
+      .insert({
+        session_id: sessionId,
+        sender: role === 'user' ? 'user' : 'ai',
+        content,
+        audio_url: audioUrl
+      });
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Failed to add message:', error);
+    return false;
+  }
+}
+
+export async function getSessionHistory(sessionId) {
+  try {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return data.map(msg => ({
+      role: msg.sender === 'user' ? 'user' : 'assistant',
+      content: msg.content,
+      audio_url: msg.audio_url
+    }));
+  } catch (error) {
+    console.error('Failed to get session history:', error);
+    return [];
+  }
+}
+
+export async function getUserSessions(userId) {
+  try {
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Failed to get user sessions:', error);
+    return [];
+  }
+}
+
+// Legacy compatibility
 export function addToHistory(sessionId, userMessage, aiMessage) {
-  addHistory(sessionId, 'user', userMessage);
-  addHistory(sessionId, 'assistant', aiMessage);
+  return Promise.all([
+    addHistory(sessionId, 'user', userMessage),
+    addHistory(sessionId, 'assistant', aiMessage)
+  ]);
 }
 
 export function getAllSessions() {
-  return Object.fromEntries(sessions);
+  console.warn('getAllSessions is deprecated - use getUserSessions instead');
+  return {};
 }

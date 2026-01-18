@@ -6,6 +6,7 @@ import interviewRoutes from "./routes/interview.js";
 import ttsRoutes from "./routes/tts.js";
 import voicesRoutes from "./routes/voices.js";
 import stopRoutes from "./routes/stop.js";
+import sessionsRoutes from "./routes/sessions.js";
 import { getAllVoices } from "./services/voiceStorage.js";
 import { getAllSessions } from "./services/interviewSession.js";
 
@@ -38,6 +39,7 @@ app.use("/api/interview", interviewRoutes);
 app.use("/api", ttsRoutes);
 app.use("/api/voices", voicesRoutes);
 app.use("/api/stop", stopRoutes);
+app.use("/api/sessions", sessionsRoutes);
 
 // Debug routes
 app.get("/api/debug/voices", (req, res) => {
@@ -80,7 +82,7 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: `Route ${req.originalUrl} not found` });
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => {
   console.log(`🚀 IVY backend running on port ${PORT}`);
   console.log(`✅ Real AI Integration Active:`);
