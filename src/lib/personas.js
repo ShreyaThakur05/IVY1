@@ -1,5 +1,6 @@
 export const PERSONAS = [
   {
+    id: 'shambhu-001',
     name: 'Shambhu',
     role: 'Technical Architect',
     description: 'The Griller. Expect deep dives into system design and logic. No surface-level answers allowed.',
@@ -9,6 +10,7 @@ export const PERSONAS = [
     voiceId: 'pNInz6obpgueM0WZtGIn'
   },
   {
+    id: 'shreyas-001',
     name: 'Shreyas',
     role: 'HR Director',
     description: 'The Behavioral Coach. Focuses on culture fit, leadership traits, and high emotional intelligence.',
@@ -18,6 +20,7 @@ export const PERSONAS = [
     voiceId: '21m00Tcm4TlvDq8ikWAM'
   },
   {
+    id: 'shreya-001',
     name: 'Shreya',
     role: 'Product Lead',
     description: 'The Strategy Expert. Rapid-fire questions on trade-offs, user impact, and prioritization.',

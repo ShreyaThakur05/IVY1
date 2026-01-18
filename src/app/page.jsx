@@ -20,6 +20,7 @@ export default function Home() {
   const [isLive, setIsLive] = useState(false)
   const [customPersonas, setCustomPersonas] = useState([])
   const [allPersonas, setAllPersonas] = useState([...PERSONAS, {
+    id: 'custom-initial',
     name: 'Custom Persona',
     role: 'Add Your Voice',
     color: '#666666',
@@ -42,7 +43,12 @@ export default function Home() {
     return () => subscription.unsubscribe()
   }, [])
 
-  const handleNewConversation = () => {
+  const handleNewConversation = (newConv) => {
+    setConversations([newConv, ...conversations])
+    setActiveConversation(newConv.id)
+  }
+
+  const handleAddConversation = () => {
     const newConv = {
       id: conversations.length + 1,
       title: `Interview ${conversations.length + 1}`,
@@ -63,9 +69,15 @@ export default function Home() {
   }
 
   const handleVoiceCloned = (voiceData) => {
-    // Update only the selected persona immediately
+    console.log('Voice cloned callback:', voiceData)
+    console.log('Selected persona ID:', selectedPersona.id)
+    
+    // CRITICAL: Keep the same ID, only update properties
+    const personaId = selectedPersona.id
+    
     const updatedPersona = {
       ...selectedPersona,
+      id: personaId,  // Ensure ID stays the same
       name: voiceData.voiceName,
       role: `Custom ${voiceData.gender === 'female' ? 'Female' : 'Male'} Voice`,
       avatar: voiceData.gender === 'female' ? '/assets/female-generic.jpg' : '/assets/male-generic.jpg',
@@ -74,12 +86,15 @@ export default function Home() {
       hasVoice: true
     }
     
-    // Update personas array
+    console.log('[SUCCESS] Updated persona with same ID:', updatedPersona.id)
+    console.log('[SUCCESS] Voice ID assigned:', updatedPersona.voiceId)
+    
+    // Update personas array by ID match
     const updatedPersonas = allPersonas.map(persona => 
-      persona === selectedPersona ? updatedPersona : persona
+      persona.id === personaId ? updatedPersona : persona
     )
     
-    // Update states immediately to prevent lag
+    // Update states
     setSelectedPersona(updatedPersona)
     setAllPersonas(updatedPersonas)
     
@@ -93,6 +108,7 @@ export default function Home() {
     if (hasEmptyCustom) return
     
     const newPersona = {
+      id: `custom-${Date.now()}`,
       name: 'Custom Persona',
       role: 'Add Your Voice',
       color: '#666666',
@@ -140,8 +156,8 @@ export default function Home() {
           </div>
         </div>
         <div className="w-[40%] flex justify-center">
-          <div className="px-6 py-2 rounded-full border border-transparent hover:border-[rgba(255,255,255,0.1)] transition-all" style={{ opacity: 0.8 }}>
-            <span className="text-sm font-medium text-primary">Dashboard</span>
+          <div className="px-6 py-2 rounded-full border border-transparent hover:border-[rgba(255,255,255,0.1)] transition-all duration-200 hover:bg-[rgba(69,214,255,0.05)]" style={{ opacity: 0.9 }}>
+            <span className="text-base font-semibold text-primary" style={{ fontSize: '120%', letterSpacing: '0.5px' }}>Dashboard Test</span>
           </div>
         </div>
         <div className="w-[30%] flex justify-end">
@@ -309,6 +325,7 @@ export default function Home() {
               onStartSpeaking={handleStartSpeaking}
               isLive={isLive}
               onOpenVoiceLab={() => setIsVoiceLabOpen(true)}
+              onNewConversation={handleNewConversation}
             />
           </div>
         </div>

@@ -1,10 +1,11 @@
 'use client'
 import { useState } from 'react'
-import { X, Edit2, Check } from 'lucide-react'
+import { X, Edit2, Check, ArrowLeft } from 'lucide-react'
 
 export default function HistoryPanel({ isOpen, onClose, conversations, activeConversation, onSelectConversation, onRenameConversation }) {
   const [editingId, setEditingId] = useState(null)
   const [editValue, setEditValue] = useState('')
+  const [viewingConversation, setViewingConversation] = useState(null)
 
   const startEdit = (conv) => {
     setEditingId(conv.id)
@@ -53,41 +54,94 @@ export default function HistoryPanel({ isOpen, onClose, conversations, activeCon
         {/* Header */}
         <div className="p-6 border-b border-[rgba(255,255,255,0.05)]">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-lg font-semibold text-primary">Conversation History</h2>
-            <button 
-              onClick={onClose}
-              className="w-8 h-8 rounded-lg hover:bg-[rgba(255,255,255,0.05)] flex items-center justify-center transition-all icon-inactive hover:opacity-100"
-            >
-              <X size={18} />
-            </button>
+            {viewingConversation ? (
+              <>
+                <button 
+                  onClick={() => setViewingConversation(null)}
+                  className="flex items-center gap-2 text-[#45D6FF] hover:text-[#5E6BFF] transition-all"
+                >
+                  <ArrowLeft size={16} />
+                  <span className="text-sm font-medium">Back</span>
+                </button>
+                <button 
+                  onClick={onClose}
+                  className="w-8 h-8 rounded-lg hover:bg-[rgba(255,255,255,0.05)] flex items-center justify-center transition-all icon-inactive hover:opacity-100"
+                >
+                  <X size={18} />
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-semibold text-primary">Conversation History</h2>
+                <button 
+                  onClick={onClose}
+                  className="w-8 h-8 rounded-lg hover:bg-[rgba(255,255,255,0.05)] flex items-center justify-center transition-all icon-inactive hover:opacity-100"
+                >
+                  <X size={18} />
+                </button>
+              </>
+            )}
           </div>
-          <p className="text-[11px] text-description">Your interview memory layer</p>
+          {!viewingConversation && <p className="text-[11px] text-description">Your interview memory layer</p>}
         </div>
 
-        {/* Conversation List */}
+        {/* Content */}
         <div className="overflow-y-auto h-[calc(100%-100px)] neural-scroll p-4">
-          {conversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-6">
-              <div className="text-4xl mb-4 opacity-20">💬</div>
-              <p className="text-sm text-description">No conversations yet</p>
-              <p className="text-xs text-metadata mt-2">Start your first interview to begin</p>
+          {viewingConversation ? (
+            /* Individual Conversation View */
+            <div className="space-y-4">
+              <div className="text-center pb-4 border-b border-[rgba(255,255,255,0.05)]">
+                <h3 className="text-lg font-semibold text-primary mb-1">{viewingConversation.title}</h3>
+                <div className="flex items-center justify-center gap-3 text-xs text-metadata">
+                  <span>{viewingConversation.persona}</span>
+                  <span>•</span>
+                  <span>{formatDate(viewingConversation.date)}</span>
+                  {viewingConversation.analysis && (
+                    <>
+                      <span>•</span>
+                      <span className="text-[#45D6FF]">Score: {viewingConversation.analysis.overall_score}/10</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                {viewingConversation.conversation?.map((msg, idx) => (
+                  <div key={idx} className="flex flex-col gap-1">
+                    <div className={`text-xs font-medium ${msg.role === 'user' ? 'text-[#45D6FF]' : 'text-green-400'}`}>
+                      {msg.role === 'user' ? 'You' : viewingConversation.persona}
+                    </div>
+                    <div className="text-sm text-secondary bg-[rgba(255,255,255,0.02)] rounded-lg p-3">
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
-            <div className="space-y-2">
-              {conversations.map((conv) => {
-                const isActive = activeConversation === conv.id
-                const isEditing = editingId === conv.id
+            /* Conversation List */
+            conversations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center px-6">
+                <div className="text-4xl mb-4 opacity-20">💬</div>
+                <p className="text-sm text-description">No conversations yet</p>
+                <p className="text-xs text-metadata mt-2">Start your first interview to begin</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {conversations.map((conv) => {
+                  const isActive = activeConversation === conv.id
+                  const isEditing = editingId === conv.id
 
-                return (
-                  <div
-                    key={conv.id}
-                    onClick={() => !isEditing && onSelectConversation(conv.id)}
-                    className={`group relative p-4 rounded-xl cursor-pointer transition-all duration-300 ${
-                      isActive 
-                        ? 'bg-[rgba(79,209,255,0.08)] border border-[rgba(79,209,255,0.25)]' 
-                        : 'bg-[rgba(255,255,255,0.02)] border border-transparent hover:bg-[rgba(255,255,255,0.04)] hover:border-[rgba(255,255,255,0.08)]'
-                    }`}
-                  >
+                  return (
+                    <div
+                      key={conv.id}
+                      onClick={() => !isEditing && setViewingConversation(conv)}
+                      className={`group relative p-4 rounded-xl cursor-pointer transition-all duration-300 ${
+                        isActive 
+                          ? 'bg-[rgba(79,209,255,0.08)] border border-[rgba(79,209,255,0.25)]' 
+                          : 'bg-[rgba(255,255,255,0.02)] border border-transparent hover:bg-[rgba(255,255,255,0.04)] hover:border-[rgba(255,255,255,0.08)]'
+                      }`}
+                    >
                     {/* Title */}
                     {isEditing ? (
                       <div className="flex items-center gap-2 mb-2">
@@ -137,6 +191,12 @@ export default function HistoryPanel({ isOpen, onClose, conversations, activeCon
                           <span>{conv.messageCount} msgs</span>
                         </>
                       )}
+                      {conv.analysis && (
+                        <>
+                          <span>•</span>
+                          <span className="text-[#45D6FF]">Score: {conv.analysis.overall_score}/10</span>
+                        </>
+                      )}
                     </div>
 
                     {/* Active Indicator */}
@@ -144,9 +204,9 @@ export default function HistoryPanel({ isOpen, onClose, conversations, activeCon
                       <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#45D6FF] rounded-r-full" />
                     )}
                   </div>
-                )
-              })}
-            </div>
+                )})}
+              </div>
+            )
           )}
         </div>
       </div>

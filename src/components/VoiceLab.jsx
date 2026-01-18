@@ -87,44 +87,45 @@ export default function VoiceLab({ isOpen, onClose, onVoiceCloned, selectedPerso
       const formData = new FormData()
       formData.append('user_id', 'current_user')
       formData.append('voice_name', voiceName)
-      formData.append('persona_name', selectedPersona.name)
-      formData.append('audio_file', audioBlob, 'voice.wav')
+      formData.append('persona_id', selectedPersona.id)
       
-      const response = await fetch('http://localhost:8006/api/voice/clone', {
+      // Use the blob directly - let backend handle the format
+      formData.append('audio_file', audioBlob, 'recording.webm')
+      
+      const response = await fetch('http://localhost:3001/api/interview/clone-voice', {
         method: 'POST',
         body: formData
       })
       
       console.log('Response status:', response.status)
       
-      if (response.ok) {
-        const result = await response.json()
-        console.log('✓ Voice cloned:', result)
-        setCloningStatus('success')
-        
-        onVoiceCloned({
-          voiceId: result.voice_id,
-          voiceName: voiceName,
-          gender: gender
-        })
-        
-        setTimeout(() => {
-          setVoiceName('')
-          setGender('')
-          setAudioBlob(null)
-          setCloningStatus('idle')
-          setRecordTime(0)
-          onClose()
-        }, 2000)
-      } else {
-        const errorText = await response.text()
-        console.error('✗ Cloning failed:', response.status, errorText)
-        alert(`Voice cloning failed: ${errorText}`)
-        setCloningStatus('idle')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || `Server error: ${response.status}`)
       }
+      
+      const result = await response.json()
+      console.log('[SUCCESS] Voice cloned:', result)
+      setCloningStatus('success')
+      
+      onVoiceCloned({
+        voiceId: result.voice_id,
+        voiceName: voiceName,
+        gender: gender
+      })
+      
+      setTimeout(() => {
+        setVoiceName('')
+        setGender('')
+        setAudioBlob(null)
+        setCloningStatus('idle')
+        setRecordTime(0)
+        onClose()
+      }, 2000)
+      
     } catch (error) {
-      console.error('✗ Network error:', error)
-      alert('Connection failed. Is the backend running?')
+      console.error('[ERROR] Voice cloning failed:', error)
+      alert(`Voice cloning failed: ${error.message}`)
       setCloningStatus('idle')
     }
   }
