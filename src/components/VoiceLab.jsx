@@ -1,6 +1,7 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
 import { Mic, Upload, X, Volume2, CheckCircle2 } from 'lucide-react'
+import { API_BASE_URL } from '@/lib/config'
 
 export default function VoiceLab({ isOpen, onClose, onVoiceCloned, selectedPersona }) {
   const [cloningStatus, setCloningStatus] = useState('idle')
@@ -92,7 +93,7 @@ export default function VoiceLab({ isOpen, onClose, onVoiceCloned, selectedPerso
       // Use the blob directly - let backend handle the format
       formData.append('audio_file', audioBlob, 'recording.webm')
       
-      const response = await fetch('http://localhost:3002/api/interview/clone-voice', {
+      const response = await fetch(`${API_BASE_URL}/api/interview/clone-voice`, {
         method: 'POST',
         body: formData
       })

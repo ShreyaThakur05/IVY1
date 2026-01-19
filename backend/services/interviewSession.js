@@ -1,26 +1,42 @@
 import { supabase } from './supabaseClient.js';
 
-export async function createInterviewSession({ user_id, persona_name, primary_topic, document_reference }) {
+export async function createInterviewSession({ user_id, persona_name, primary_topic }) {
   try {
+    console.log('Creating session with params:', { user_id, persona_name, primary_topic });
+    
     const title = primary_topic || `${persona_name} Interview`;
     
+    // Skip profile creation entirely - just create the session
     const { data, error } = await supabase
       .from('sessions')
       .insert({
         user_id,
         title,
-        persona_name,
-        interview_mode: 'Interview',
-        primary_topic,
-        document_reference
+        persona_name
       })
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Session creation error details:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        full_error: error
+      });
+      throw error;
+    }
+    console.log('✅ Session created successfully:', data.id);
     return data.id;
   } catch (error) {
-    console.error('Failed to create session:', error);
+    console.error('Failed to create session - DETAILED ERROR:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      stack: error.stack
+    });
     return null;
   }
 }

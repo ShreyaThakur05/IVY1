@@ -131,8 +131,7 @@ router.post("/start", upload.single('source_file'), async (req, res) => {
     const sessionId = await createInterviewSession({ 
       user_id, 
       persona_name, 
-      primary_topic,
-      document_reference
+      primary_topic
     });
     
     if (!sessionId) {

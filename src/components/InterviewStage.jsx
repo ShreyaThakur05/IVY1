@@ -2,6 +2,7 @@
 import { Mic, Volume2, Square, RotateCcw, Upload, X } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import VoiceWaveform from './VoiceWaveform'
+import { API_BASE_URL } from '@/lib/config'
 
 export default function InterviewStage({ selectedPersona, onStartSpeaking, isLive, onOpenVoiceLab, onNewConversation, user }) {
   const [rotation, setRotation] = useState(0)
@@ -112,7 +113,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
     const thankYouMsg = "Thank you for the interview. It was great talking with you!"
     
     try {
-      const ttsResponse = await fetch('http://localhost:3002/api/tts', {
+      const ttsResponse = await fetch(`${API_BASE_URL}/api/tts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -150,7 +151,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
     
     try {
       const currentSessionId = sessionIdRef.current || localStorage.getItem('ivy_session_id')
-      const response = await fetch('http://localhost:3002/api/interview/analyze', {
+      const response = await fetch(`${API_BASE_URL}/api/interview/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: currentSessionId })
@@ -227,7 +228,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
     
     try {
       // Check backend health first
-      const healthCheck = await fetch('http://localhost:3002/health')
+      const healthCheck = await fetch(`${API_BASE_URL}/health`)
       if (!healthCheck.ok) {
         throw new Error('Backend service unavailable')
       }
@@ -255,7 +256,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       }
       console.log('===============================\n');
       
-      const response = await fetch('http://localhost:3002/api/interview/start', {
+      const response = await fetch(`${API_BASE_URL}/api/interview/start`, {
         method: 'POST',
         body: formData
       })
@@ -449,7 +450,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       formData.append('audio_file', audioBlob, 'user_response.wav')
       formData.append('session_id', currentSessionId)
       
-      const response = await fetch('http://localhost:3002/api/interview/chat', {
+      const response = await fetch(`${API_BASE_URL}/api/interview/chat`, {
         method: 'POST',
         body: formData
       })
@@ -469,7 +470,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       
       // Use backend TTS with custom voice instead of browser speech synthesis
       try {
-        const ttsResponse = await fetch('http://localhost:3001/api/tts', {
+        const ttsResponse = await fetch(`${API_BASE_URL}/api/tts`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -687,7 +688,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
               <div className="space-y-3">
                 <div>
                   <span className="text-sm font-medium text-primary">Overall Score: </span>
-                  <span className="text-lg font-bold text-[#45D6FF]">{analysisResult.overall_score}/10</span>
+                  <span className="text-lg font-bold text-[#45D6FF]">{analysisResult.overall_score}/100</span>
                 </div>
                 <div>
                   <span className="text-sm font-medium text-primary block mb-1">Strengths:</span>

@@ -82,7 +82,7 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: `Route ${req.originalUrl} not found` });
 });
 
-const PORT = process.env.PORT || 3002;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 IVY backend running on port ${PORT}`);
   console.log(`✅ Real AI Integration Active:`);
