@@ -36,7 +36,7 @@ app.use((err, req, res, next) => {
 
 // Routes
 app.use("/api/interview", interviewRoutes);
-app.use("/api", ttsRoutes);
+app.use("/api/tts", ttsRoutes);
 app.use("/api/voices", voicesRoutes);
 app.use("/api/stop", stopRoutes);
 app.use("/api/sessions", sessionsRoutes);

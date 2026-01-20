@@ -35,10 +35,30 @@ function saveVoices() {
 loadVoices();
 
 export function getVoiceId(personaName) {
+  console.log(`[VOICE] Looking for voice for persona: "${personaName}"`);
+  
+  // Check for custom voices first
   if (voicePersonas.has(personaName)) {
-    return voicePersonas.get(personaName).voice_id;
+    const voiceId = voicePersonas.get(personaName).voice_id;
+    console.log(`[VOICE] Found custom voice: ${voiceId}`);
+    return voiceId;
   }
-  return "21m00Tcm4TlvDq8ikWAM"; // Default Rachel voice
+  
+  // Default persona voices - using standard ElevenLabs voices
+  const defaultVoices = {
+    'Shambhu': 'pNInz6obpgueM0WZtGIn',     // Adam (male)
+    'Shreyas': 'yoZ06aMxZJJ28mfd3POQ',     // Sam (male) 
+    'Shreya': '21m00Tcm4TlvDq8ikWAM'      // Rachel (female)
+  };
+  
+  const defaultVoice = defaultVoices[personaName];
+  if (defaultVoice) {
+    console.log(`[VOICE] Using default voice for ${personaName}: ${defaultVoice}`);
+    return defaultVoice;
+  }
+  
+  console.log(`[VOICE] No voice found for "${personaName}", using fallback`);
+  return "21m00Tcm4TlvDq8ikWAM";
 }
 
 export function setVoicePersona(name, data) {

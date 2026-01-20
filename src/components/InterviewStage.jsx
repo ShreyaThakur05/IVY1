@@ -158,7 +158,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
         throw new Error('No session to analyze')
       }
       
-      const response = await fetch('http://localhost:3001/api/interview/analyze', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/interview/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: currentSessionId })
@@ -179,6 +179,8 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
             date: new Date(),
             session_id: currentSessionId
           }
+          
+          console.log('Calling onNewConversation with:', newConversation)
           onNewConversation(newConversation)
         }
         
@@ -278,7 +280,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       }
       console.log('===============================\n');
       
-      const response = await fetch('http://localhost:3001/api/interview/start', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/interview/start`, {
         method: 'POST',
         body: formData
       })
@@ -506,7 +508,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       formData.append('audio_file', audioBlob, 'user_response.wav')
       formData.append('session_id', currentSessionId)
       
-      const response = await fetch('http://localhost:3001/api/interview/chat', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/interview/chat`, {
         method: 'POST',
         body: formData
       })

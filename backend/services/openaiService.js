@@ -28,7 +28,7 @@ export async function generateRAGResponse(context, history, userInput, sessionId
   const safeContext = context.substring(0, MAX_CONTEXT_KZ);
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     
     const prompt = `You are ${persona || 'an expert interviewer'} conducting a real-time interview.
 

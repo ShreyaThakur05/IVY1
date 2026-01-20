@@ -9,6 +9,8 @@ export default function Auth({ onAuthSuccess }) {
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showVerification, setShowVerification] = useState(false)
+  const [verificationEmail, setVerificationEmail] = useState('')
 
   const handleAuth = async (e) => {
     e.preventDefault()
@@ -16,30 +18,35 @@ export default function Auth({ onAuthSuccess }) {
 
     try {
       console.log('Attempting auth with:', { email, isSignUp })
+      console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
       
       if (isSignUp) {
         console.log('Signing up...')
         const { data, error } = await supabase.auth.signUp({
-          email,
+          email: email.trim(),
           password,
           options: {
-            data: { full_name: fullName }
+            data: { full_name: fullName.trim() }
           }
         })
         console.log('Sign up result:', { data, error })
         if (error) throw error
+        
         if (data.user) {
           console.log('Sign up successful, user:', data.user)
-          onAuthSuccess(data.user)
+          setVerificationEmail(email)
+          setShowVerification(true)
+          // Don't call onAuthSuccess yet - wait for email verification
         }
       } else {
         console.log('Signing in...')
         const { data, error } = await supabase.auth.signInWithPassword({
-          email,
+          email: email.trim(),
           password
         })
         console.log('Sign in result:', { data, error })
         if (error) throw error
+        
         if (data.user) {
           console.log('Sign in successful, user:', data.user)
           onAuthSuccess(data.user)
@@ -47,7 +54,18 @@ export default function Auth({ onAuthSuccess }) {
       }
     } catch (error) {
       console.error('Auth error:', error)
-      alert(`Authentication failed: ${error.message}`)
+      let errorMessage = error.message
+      
+      // Handle specific error cases
+      if (error.message.includes('Invalid login credentials')) {
+        errorMessage = 'Invalid email or password. Please try again.'
+      } else if (error.message.includes('Email not confirmed')) {
+        errorMessage = 'Please check your email and click the confirmation link.'
+      } else if (error.message.includes('Failed to fetch')) {
+        errorMessage = 'Network error. Please check your internet connection.'
+      }
+      
+      alert(`Authentication failed: ${errorMessage}`)
     } finally {
       setLoading(false)
     }
@@ -56,10 +74,11 @@ export default function Auth({ onAuthSuccess }) {
   const handleOAuthLogin = async (provider) => {
     try {
       console.log('Attempting OAuth login with:', provider)
+      setLoading(true)
       const { data, error } = await supabase.auth.signInWithOAuth({ 
         provider,
         options: {
-          redirectTo: window.location.origin
+          redirectTo: `${window.location.origin}`
         }
       })
       console.log('OAuth result:', { data, error })
@@ -67,7 +86,36 @@ export default function Auth({ onAuthSuccess }) {
     } catch (error) {
       console.error('OAuth error:', error)
       alert(`OAuth login failed: ${error.message}`)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  // Show verification screen after signup
+  if (showVerification) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="rounded-3xl shadow-2xl bg-[#0B1018] border border-[rgba(255,255,255,0.05)] p-12 max-w-md w-full text-center">
+          <div className="text-6xl mb-6">📧</div>
+          <h1 className="text-2xl font-semibold text-primary mb-4">Check Your Email</h1>
+          <p className="text-secondary mb-2">We've sent a verification link to:</p>
+          <p className="text-[#45D6FF] font-medium mb-6">{verificationEmail}</p>
+          <p className="text-sm text-description mb-8">Click the link in your email to verify your account and complete the signup process.</p>
+          <button 
+            onClick={() => {
+              setShowVerification(false)
+              setIsSignUp(false)
+              setEmail('')
+              setPassword('')
+              setFullName('')
+            }}
+            className="w-full py-3 rounded-xl border border-[rgba(255,255,255,0.2)] text-primary hover:bg-[rgba(255,255,255,0.05)] transition-all"
+          >
+            Back to Sign In
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (

@@ -32,18 +32,48 @@ export default function Home() {
   const [voices, setVoices] = useState([])
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Check for existing session but don't auto-login
+    const checkSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('Session check error:', error)
+          return
+        }
+        
+        if (session?.user) {
+          console.log('Found existing session for:', session.user.email)
+          setUser(session.user)
+          loadUserConversations(session.user.id)
+        } else {
+          console.log('No existing session found')
+          setUser(null)
+        }
+      } catch (error) {
+        console.error('Session check failed:', error)
+        setUser(null)
+      }
+    }
+    
+    checkSession()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth state changed:', event, session?.user?.email)
+      
+      if (event === 'SIGNED_OUT') {
+        console.log('User signed out, clearing state')
+        setUser(null)
+        setConversations([])
+        setActiveConversation(null)
+        return
+      }
+      
       if (session?.user) {
         setUser(session.user)
         loadUserConversations(session.user.id)
-      }
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        loadUserConversations(session.user.id)
       } else {
+        setUser(null)
         setConversations([])
         setActiveConversation(null)
       }
@@ -54,36 +84,55 @@ export default function Home() {
 
   const loadUserConversations = async (userId) => {
     try {
+      console.log('Loading conversations for user:', userId)
+      
       const { data, error } = await supabase
         .from('sessions')
         .select(`
           *,
           messages (
-            role,
+            sender,
             content,
-            message_order
+            message_order,
+            created_at
           )
         `)
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
       
-      if (error) throw error
+      if (error) {
+        console.error('Error loading conversations:', error)
+        throw error
+      }
       
-      const formattedConversations = data.map(session => ({
-        id: session.id,
-        title: session.title || `Interview ${session.id}`,
-        persona: session.persona_name,
-        date: new Date(session.created_at),
-        messageCount: session.message_count || 0,
-        analysis: session.analysis,
-        conversation: session.messages
+      const formattedConversations = data.map(session => {
+        // Sort messages by message_order, fallback to created_at
+        const sortedMessages = session.messages
           ? session.messages
-              .sort((a, b) => a.message_order - b.message_order)
-              .map(msg => ({ role: msg.role, content: msg.content }))
+              .sort((a, b) => {
+                if (a.message_order !== undefined && b.message_order !== undefined) {
+                  return a.message_order - b.message_order
+                }
+                return new Date(a.created_at) - new Date(b.created_at)
+              })
+              .map(msg => ({ 
+                role: msg.sender === 'user' ? 'user' : 'assistant', 
+                content: msg.content 
+              }))
           : []
-      }))
+        
+        return {
+          id: session.id,
+          title: session.title || `Interview ${session.id}`,
+          persona: session.persona_name,
+          date: new Date(session.created_at),
+          messageCount: session.message_count || sortedMessages.length,
+          analysis: session.analysis,
+          conversation: sortedMessages
+        }
+      })
       
-      console.log('Current conversations:', formattedConversations)
+      console.log(`Loaded ${formattedConversations.length} conversations:`, formattedConversations)
       setConversations(formattedConversations)
     } catch (error) {
       console.error('Error loading conversations:', error)
@@ -91,45 +140,76 @@ export default function Home() {
   }
 
   const saveConversation = async (conversation) => {
-    if (!user) return
+    if (!user) {
+      console.log('No user logged in, skipping save')
+      return null
+    }
     
     try {
-      // Save session first
-      const { data: sessionData, error: sessionError } = await supabase
+      console.log('Saving conversation:', conversation)
+      
+      // Save/update session
+      const sessionData = {
+        id: conversation.session_id,
+        user_id: user.id,
+        title: conversation.title,
+        persona_name: conversation.persona,
+        message_count: conversation.messageCount || 0,
+        analysis: conversation.analysis || null
+      }
+      
+      const { data: savedSession, error: sessionError } = await supabase
         .from('sessions')
-        .upsert({
-          id: conversation.session_id,
-          user_id: user.id,
-          title: conversation.title,
-          persona_name: conversation.persona,
-          message_count: conversation.messageCount,
-          analysis: conversation.analysis
-        }, { onConflict: 'id' })
+        .upsert(sessionData, { onConflict: 'id' })
         .select()
+        .single()
       
-      if (sessionError) throw sessionError
+      if (sessionError) {
+        console.error('Session save error:', sessionError)
+        throw sessionError
+      }
       
-      // Save individual messages if they exist
+      console.log('Session saved successfully:', savedSession.id)
+      
+      // Save messages if they exist and aren't already saved
       if (conversation.conversation && conversation.conversation.length > 0) {
-        const messages = conversation.conversation.map((msg, index) => ({
-          session_id: conversation.session_id,
-          role: msg.role,
-          content: msg.content,
-          message_order: index
-        }))
-        
-        const { error: messagesError } = await supabase
+        // Check if messages already exist
+        const { data: existingMessages } = await supabase
           .from('messages')
-          .upsert(messages, { onConflict: 'session_id,message_order' })
+          .select('message_order')
+          .eq('session_id', conversation.session_id)
         
-        if (messagesError) {
-          console.warn('Failed to save messages:', messagesError)
+        const existingOrders = new Set(existingMessages?.map(m => m.message_order) || [])
+        
+        // Only save new messages
+        const newMessages = conversation.conversation
+          .map((msg, index) => ({
+            session_id: conversation.session_id,
+            sender: msg.role === 'user' ? 'user' : 'ai',
+            content: msg.content,
+            message_order: index
+          }))
+          .filter(msg => !existingOrders.has(msg.message_order))
+        
+        if (newMessages.length > 0) {
+          const { error: messagesError } = await supabase
+            .from('messages')
+            .insert(newMessages)
+          
+          if (messagesError) {
+            console.warn('Failed to save some messages:', messagesError)
+          } else {
+            console.log(`Saved ${newMessages.length} new messages`)
+          }
+        } else {
+          console.log('No new messages to save')
         }
       }
       
-      return sessionData[0]
+      return savedSession
     } catch (error) {
       console.error('Error saving conversation:', error)
+      return null
     }
   }
 
@@ -306,17 +386,38 @@ export default function Home() {
                 <div className="w-7 h-7 rounded-full bg-[#5E6BFF] flex items-center justify-center text-xs font-semibold" style={{ filter: 'saturate(0.7)' }}>
                   {user?.email?.[0]?.toUpperCase()}
                 </div>
-                <span className="text-xs text-metadata">User</span>
+                <span className="text-xs text-metadata max-w-[120px] truncate">{user?.email}</span>
                 <ChevronDown size={14} className="icon-inactive" />
               </button>
               
               {/* Dropdown */}
-              <div className="absolute right-0 top-full mt-2 w-40 rounded-xl bg-[rgba(11,16,24,0.95)] backdrop-blur-xl border border-[rgba(255,255,255,0.05)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 overflow-hidden">
+              <div className="absolute right-0 top-full mt-2 w-48 rounded-xl bg-[rgba(11,16,24,0.95)] backdrop-blur-xl border border-[rgba(255,255,255,0.05)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 overflow-hidden">
                 <div className="p-2">
+                  <div className="px-4 py-2 text-xs text-metadata border-b border-[rgba(255,255,255,0.05)] mb-2">
+                    {user?.email}
+                  </div>
                   <button 
                     onClick={async () => {
-                      await supabase.auth.signOut()
-                      setUser(null)
+                      console.log('Logging out user:', user?.email)
+                      try {
+                        // Clear Supabase session
+                        await supabase.auth.signOut()
+                        
+                        // Clear local storage
+                        localStorage.clear()
+                        
+                        // Clear session storage
+                        sessionStorage.clear()
+                        
+                        // Reset all state
+                        setUser(null)
+                        setConversations([])
+                        setActiveConversation(null)
+                        
+                        console.log('Logout successful')
+                      } catch (error) {
+                        console.error('Logout error:', error)
+                      }
                     }}
                     className="w-full px-4 py-2.5 rounded-lg text-left text-sm hover:bg-[rgba(255,120,120,0.08)] transition-all flex items-center gap-3"
                     style={{ color: 'rgba(255,120,120,0.8)' }}
@@ -433,7 +534,7 @@ export default function Home() {
         </div>
 
         {/* Right Panel - Active Persona */}
-        <div className="w-[35%] rounded-[28px] p-4 flex items-center justify-center mt-8" style={{ background: 'radial-gradient(120% 120% at 50% 30%, rgba(79, 209, 255, 0.08), rgba(8, 12, 18, 1) 70%)', height: 'fit-content', maxHeight: '85vh' }}>
+        <div className="w-[35%] rounded-[28px] p-8 flex items-center justify-center -mt-2" style={{ background: 'radial-gradient(120% 120% at 50% 30%, rgba(79, 209, 255, 0.08), rgba(8, 12, 18, 1) 70%)', height: 'fit-content', maxHeight: '90vh', transform: 'scale(0.8)', transformOrigin: 'center' }}>
           <div className="w-full h-full overflow-hidden">
             <InterviewStage 
               selectedPersona={selectedPersona}

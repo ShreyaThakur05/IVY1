@@ -59,16 +59,31 @@ export async function getSession(sessionId) {
 
 export async function addHistory(sessionId, role, content, audioUrl = null) {
   try {
+    // Get current message count for ordering
+    const { data: sessionData } = await supabase
+      .from('sessions')
+      .select('message_count')
+      .eq('id', sessionId)
+      .single();
+    
+    const messageOrder = sessionData?.message_count || 0;
+    
     const { error } = await supabase
       .from('messages')
       .insert({
         session_id: sessionId,
         sender: role === 'user' ? 'user' : 'ai',
         content,
-        audio_url: audioUrl
+        audio_url: audioUrl,
+        message_order: messageOrder
       });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Failed to add message:', error);
+      throw error;
+    }
+    
+    console.log(`✅ Message saved: ${role} - ${content.substring(0, 50)}...`);
     return true;
   } catch (error) {
     console.error('Failed to add message:', error);
@@ -82,14 +97,19 @@ export async function getSessionHistory(sessionId) {
       .from('messages')
       .select('*')
       .eq('session_id', sessionId)
-      .order('created_at', { ascending: true });
+      .order('message_order', { ascending: true });
 
     if (error) throw error;
-    return data.map(msg => ({
+    
+    const history = data.map(msg => ({
       role: msg.sender === 'user' ? 'user' : 'assistant',
       content: msg.content,
-      audio_url: msg.audio_url
+      audio_url: msg.audio_url,
+      message_order: msg.message_order
     }));
+    
+    console.log(`📚 Retrieved ${history.length} messages for session ${sessionId}`);
+    return history;
   } catch (error) {
     console.error('Failed to get session history:', error);
     return [];

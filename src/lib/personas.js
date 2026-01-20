@@ -18,7 +18,7 @@ export const PERSONAS = [
     color: '#3CFF9E',
     avatar: '/assets/shreyas.jpeg',
     systemPrompt: "You are Shreyas, an HR Director. Focus on 'Why' and 'How'. Look for leadership traits and emotional intelligence in the answers.",
-    voiceId: '21m00Tcm4TlvDq8ikWAM',
+    voiceId: 'yoZ06aMxZJJ28mfd3POQ',
     gender: 'male'
   },
   {
@@ -29,7 +29,7 @@ export const PERSONAS = [
     color: '#45D6FF',
     avatar: '/assets/shreya.png',
     systemPrompt: "You are Shreya, a Product Manager. Your questions are about trade-offs, user impact, and prioritization. You are quick and expect concise answers.",
-    voiceId: 'EXAVITQu4vr4xnSDxMaL',
+    voiceId: '21m00Tcm4TlvDq8ikWAM',
     gender: 'female'
   }
 ]
