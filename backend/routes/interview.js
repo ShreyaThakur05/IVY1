@@ -109,16 +109,17 @@ router.post("/start", upload.single('source_file'), async (req, res) => {
     
     let primary_topic = interview_topic;
     let document_reference = null;
+    let extractedContent = null;
 
     // Extract text if file provided
     if (req.file) {
       console.log(`[START] Processing source file: ${req.file.filename}`);
       try {
-        const extractedText = await extractTextFromFile(req.file.path, req.file.mimetype);
-        if (extractedText && extractedText.trim()) {
+        extractedContent = await extractTextFromFile(req.file.path, req.file.mimetype);
+        if (extractedContent && extractedContent.trim()) {
           document_reference = req.file.originalname;
           primary_topic = `${interview_topic} (Document: ${req.file.originalname})`;
-          console.log(`[START] Extracted ${extractedText.length} characters from source file`);
+          console.log(`[START] Extracted ${extractedContent.length} characters from source file`);
         }
       } catch (error) {
         console.error('[START] File processing error:', error);
@@ -144,10 +145,14 @@ router.post("/start", upload.single('source_file'), async (req, res) => {
     
     // Generate opening question
     try {
+      const contextForAI = extractedContent 
+        ? `Document Content: ${extractedContent}\n\nInterview Topic: ${primary_topic}`
+        : `Interview Topic: ${primary_topic}`;
+        
       const openingMsg = await generateRAGResponse(
-        `Topic: ${primary_topic}`, 
+        contextForAI, 
         [], 
-        "Start the interview. Welcome me warmly and ask me to introduce myself. Keep it under 30 words.",
+        "Start the interview. Welcome me warmly and ask me a specific question based on the document content or topic. Keep it under 30 words.",
         sessionId,
         persona_name
       );
@@ -226,8 +231,10 @@ router.post("/chat", upload.single('audio_file'), async (req, res) => {
     let aiText;
     try {
       console.log(`[CHAT] Generating AI response...`);
-      const context = `Topic: ${session.primary_topic || session.title}`;
-      aiText = await generateRAGResponse(context, history, userText, session_id, session.persona_name);
+      const contextForAI = session.document_reference 
+        ? `Document: ${session.document_reference}\n\nTopic: ${session.primary_topic || session.title}`
+        : `Topic: ${session.primary_topic || session.title}`;
+      aiText = await generateRAGResponse(contextForAI, history, userText, session_id, session.persona_name);
       console.log(`🤖 AI replied: "${aiText}"`);
     } catch (error) {
       console.error('[CHAT] AI generation error:', error);
@@ -358,21 +365,63 @@ router.post("/analyze", async (req, res) => {
     // Get conversation history
     const history = await getSessionHistory(session_id);
     
+    // Check if there's actual conversation content
+    const userMessages = history.filter(msg => msg.role === 'user')
+    if (userMessages.length === 0) {
+      console.log(`[ANALYZE] No user conversation found, returning 0 score`)
+      const result = {
+        session_id,
+        overall_score: 0,
+        analysis: "No conversation detected. The candidate did not participate in the interview.",
+        strengths: "No strengths to evaluate - no conversation occurred",
+        improvements: "Complete the interview by responding to questions",
+        brutal_reality: "Cannot evaluate performance without any conversation",
+        conversation_history: history,
+        analyzed_at: new Date().toISOString()
+      }
+      return res.json(result)
+    }
+    
     // Create analysis prompt
     const conversation = history.map(msg => 
       `${msg.role === 'user' ? 'Candidate' : 'Interviewer'}: ${msg.content}`
     ).join('\n\n');
     
-    const analysisPrompt = `You are an adaptive interview evaluator and conversational AI conducting and analyzing a speech-to-speech interview on a fixed topic or an uploaded reference document.
+    const analysisPrompt = `You are an interview evaluator conducting assessment based on strict scoring criteria.
 
-Your behavior must be dynamic, context-aware, and evidence-driven.
+🚨 SCORING RULES (Must Follow Exactly)
 
-🚨 Score Scale Enforcement
-The final score MUST be out of 100
-You are strictly forbidden from:
-- Using /10, /5, or mixed scales
-- Writing outputs like 64/10
-Any score must be displayed as: Final Score: XX / 100
+0–10 / 100
+The candidate did not speak, gave no meaningful response, or responded with irrelevant filler.
+No engagement with the topic.
+
+10–15 / 100
+The candidate provided only a basic introduction or greeting.
+No substantive discussion of the topic.
+No answers to interview questions.
+
+20–40 / 100
+The candidate engaged in a moderate conversation related to the topic.
+Some relevant points were made, but:
+- Answers lacked depth, clarity, or structure
+- Concepts were partially explained or vaguely addressed
+- Missed multiple opportunities to elaborate
+
+40–70 / 100
+The candidate participated in a long, in-depth conversation on the topic.
+Demonstrated:
+- Good conceptual understanding
+- Logical flow in responses
+- Reasonable confidence
+Minor inaccuracies, gaps, or lack of precision may still exist.
+
+70–100 / 100
+The candidate answered all questions accurately with:
+- High precision and correctness
+- Clear explanations and examples where appropriate
+- Strong confidence and articulation
+- Consistent relevance to the topic
+- Responses demonstrate expert-level understanding
 
 🔍 Content Presence Validation (Critical)
 Before assigning any meaningful score, you MUST first validate:
@@ -382,19 +431,6 @@ Apply this decision flow before scoring:
 - No topical content detected → Cap score at 0–15 / 100, Skip depth-based evaluation
 - Minimal topical mention (very shallow) → Cap score at 30 / 100
 - Clear topical engagement → Full scoring allowed
-
-This gating must influence all parameters.
-
-🎯 Scoring Rules (Strict)
-Scores must be:
-- Evidence-based
-- Proportional to content quality
-- Impossible to reach "average" without substance
-
-DO NOT:
-- Default to mid-range scores
-- Reward participation alone
-- Reuse previous session scores
 
 📊 Evaluation Parameters (Adaptive Use)
 Score each parameter out of 10, then apply the weight:

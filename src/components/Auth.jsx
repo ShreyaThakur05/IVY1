@@ -113,22 +113,10 @@ export default function Auth({ onAuthSuccess }) {
             <button 
               type="submit" 
               disabled={loading}
-              className="w-full py-3 rounded-[14px] font-semibold uppercase tracking-wider transition-all disabled:opacity-50 hover:shadow-[0_0_20px_rgba(69,214,255,0.3)] text-sm mb-3"
+              className="w-full py-3 rounded-[14px] font-semibold uppercase tracking-wider transition-all disabled:opacity-50 hover:shadow-[0_0_20px_rgba(69,214,255,0.3)] text-sm"
               style={{ background: 'linear-gradient(135deg, #45D6FF, #5E6BFF)', color: '#EAF1F7' }}
             >
               {loading ? 'Loading...' : 'Sign In'}
-            </button>
-            
-            {/* Temporary bypass for development */}
-            <button 
-              type="button"
-              onClick={() => {
-                console.log('Using dev bypass authentication');
-                onAuthSuccess({ id: 'dev-user', email: 'dev@test.com' });
-              }}
-              className="w-full py-2 rounded-[14px] font-medium text-xs border border-[#45D6FF]/30 text-[#45D6FF] hover:bg-[#45D6FF]/10 transition-all"
-            >
-              Skip Auth (Dev)
             </button>
           </form>
         </div>

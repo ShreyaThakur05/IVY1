@@ -15,18 +15,11 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [showThankYou, setShowThankYou] = useState(false)
   const [analysisResult, setAnalysisResult] = useState(null)
-  const [isInterviewTerminated, setIsInterviewTerminated] = useState(false)
   const mediaRecorderRef = useRef(null)
   const audioContextRef = useRef(null)
   const analyserRef = useRef(null)
   const currentAudioRef = useRef(null)
   const sessionIdRef = useRef(null)
-  const isInterviewActiveRef = useRef(false)
-
-  // Sync ref with state
-  useEffect(() => {
-    isInterviewActiveRef.current = isInterviewActive
-  }, [isInterviewActive])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -57,14 +50,9 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
     setIsAISpeaking(false)
     setAudioLevel(0)
     
-    // Only auto-start recording if interview is still active and not terminated
-    if (isInterviewActive && !isInterviewTerminated && !isAnalyzing && !showThankYou) {
-      setTimeout(() => {
-        // Double-check interview is still active before starting recording
-        if (isInterviewActive && !isInterviewTerminated && !isAnalyzing && !showThankYou) {
-          startRecording()
-        }
-      }, 500)
+    // Auto-start recording if interview is active and AI was speaking
+    if (isInterviewActive && !isRecording) {
+      setTimeout(() => startRecording(), 500)
     }
   }
 
@@ -98,66 +86,70 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       return
     }
     
-    console.log('🛑 ENDING INTERVIEW - Terminating AI immediately')
-    
-    // IMMEDIATELY terminate interview to prevent any further AI interactions
-    setIsInterviewTerminated(true)
+    // Terminate all interview actions immediately
     setIsInterviewActive(false)
-    isInterviewActiveRef.current = false
     
-    // FORCE stop ALL audio sources immediately
     if (currentAudioRef.current) {
       currentAudioRef.current.pause()
-      currentAudioRef.current.currentTime = 0
-      currentAudioRef.current.src = ''
       currentAudioRef.current = null
     }
     
-    // Cancel any ongoing speech synthesis IMMEDIATELY
-    speechSynthesis.cancel()
+    if (speechSynthesis.speaking) {
+      speechSynthesis.cancel()
+    }
     
-    // Stop recording if active
     if (mediaRecorderRef.current?.state === 'recording') {
       mediaRecorderRef.current.stop()
     }
     
-    // Set states to stop interview actions
     setIsRecording(false)
     setAudioLevel(0)
-    setIsAISpeaking(false)
     
-    // Skip thank you message and go directly to analysis
-    proceedWithAnalysis()
+    // AI says thank you
+    setIsAISpeaking(true)
+    const thankYouMsg = "Thank you for the interview. It was great talking with you!"
+    
+    try {
+      const ttsResponse = await fetch('http://localhost:3001/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: thankYouMsg,
+          persona_name: selectedPersona.name
+        })
+      })
+      
+      if (ttsResponse.ok) {
+        const audioBlob = await ttsResponse.blob()
+        const audioUrl = URL.createObjectURL(audioBlob)
+        const audio = new Audio(audioUrl)
+        currentAudioRef.current = audio
+        
+        audio.onended = () => {
+          setIsAISpeaking(false)
+          URL.revokeObjectURL(audioUrl)
+          currentAudioRef.current = null
+          // Start analysis after thank you
+          proceedWithAnalysis()
+        }
+        
+        await audio.play()
+      } else {
+        setIsAISpeaking(false)
+        proceedWithAnalysis()
+      }
+    } catch (error) {
+      console.error('Thank you TTS failed:', error)
+      setIsAISpeaking(false)
+      proceedWithAnalysis()
+    }
   }
   
   const proceedWithAnalysis = async () => {
-    // IMMEDIATELY stop all AI speech and recording
-    setIsAISpeaking(false)
-    setIsRecording(false)
-    speechSynthesis.cancel()
-    
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause()
-      currentAudioRef.current = null
-    }
-    
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop()
-    }
-    
-    // Clear session BEFORE analysis to prevent further AI calls
-    const currentSessionId = sessionIdRef.current || localStorage.getItem('ivy_session_id')
-    sessionIdRef.current = null
-    localStorage.removeItem('ivy_session_id')
-    setSessionId(null)
-    
     setIsAnalyzing(true)
     
     try {
-      if (!currentSessionId) {
-        throw new Error('No session to analyze')
-      }
-      
+      const currentSessionId = sessionIdRef.current || localStorage.getItem('ivy_session_id')
       const response = await fetch('http://localhost:3001/api/interview/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -176,36 +168,15 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
             messageCount: analysis.conversation_history?.length || 0,
             analysis: analysis,
             conversation: analysis.conversation_history || [],
-            date: new Date(),
-            session_id: currentSessionId
+            date: new Date()
           }
           onNewConversation(newConversation)
         }
-        
-      } else {
-        throw new Error('Analysis failed')
       }
     } catch (error) {
       console.error('Analysis error:', error)
-      alert('Failed to analyze interview')
     } finally {
       setIsAnalyzing(false)
-      
-      // COMPLETELY terminate interview after analysis
-      setIsInterviewActive(false)
-      setIsRecording(false)
-      setAudioLevel(0)
-      setIsAISpeaking(false)
-      
-      // Stop any remaining audio/recording
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause()
-        currentAudioRef.current = null
-      }
-      
-      if (mediaRecorderRef.current?.state === 'recording') {
-        mediaRecorderRef.current.stop()
-      }
     }
   }
 
@@ -220,7 +191,6 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
     sessionIdRef.current = null
     localStorage.removeItem('ivy_session_id')
     setIsInterviewActive(false)
-    setIsInterviewTerminated(false)
   }
 
   const startConversation = async () => {
@@ -255,7 +225,6 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       }
       
       setIsInterviewActive(true)
-      isInterviewActiveRef.current = true
       
       const formData = new FormData()
       formData.append('persona_name', selectedPersona.name.trim())
@@ -265,18 +234,6 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       if (sourceFile) {
         formData.append('source_file', sourceFile)
       }
-      
-      // DETAILED DEBUGGING - Log what we're sending
-      console.log('\n=== FRONTEND REQUEST DEBUG ===');
-      console.log('- persona_name:', JSON.stringify(selectedPersona.name.trim()));
-      console.log('- interview_topic:', JSON.stringify(finalTopic));
-      console.log('- user_id:', JSON.stringify(user?.id || 'anonymous'));
-      console.log('- source_file:', sourceFile ? sourceFile.name : 'No file');
-      console.log('- FormData entries:');
-      for (let [key, value] of formData.entries()) {
-        console.log(`  ${key}:`, typeof value === 'string' ? JSON.stringify(value) : value);
-      }
-      console.log('===============================\n');
       
       const response = await fetch('http://localhost:3001/api/interview/start', {
         method: 'POST',
@@ -303,21 +260,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
         setInterviewTopic(result.detected_topic)
       }
       
-      // CRITICAL: Set AI speaking state BEFORE audio playback
       setIsAISpeaking(true)
-      
-      // Auto-listening handler - use arrow function to capture current state
-      const handleAudioEnd = () => {
-        console.log('🎤 AI finished speaking, starting auto-listen...')
-        setIsAISpeaking(false)
-        // Use current ref state for reliable auto-listening
-        if (isInterviewActiveRef.current) {
-          setTimeout(() => {
-            console.log('🎤 Auto-starting recording after intro...')
-            startRecording()
-          }, 500)
-        }
-      }
       
       // Use backend TTS with custom voice instead of browser speech synthesis
       try {
@@ -342,17 +285,20 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
           audio.onended = () => {
             setIsAISpeaking(false)
             URL.revokeObjectURL(audioUrl)
-            if (isInterviewActiveRef.current) {
-              setTimeout(() => startRecording(), 300)
-            }
+            setTimeout(() => {
+              const currentSessionId = sessionIdRef.current || localStorage.getItem('ivy_session_id')
+              if (currentSessionId) {
+                startRecording()
+              } else {
+                console.error('Session ID not available for recording')
+              }
+            }, 1500)
           }
           
           audio.onerror = (e) => {
             console.error('Audio playback error:', e)
             setIsAISpeaking(false)
-            if (isInterviewActiveRef.current) {
-              setTimeout(() => startRecording(), 300)
-            }
+            setTimeout(() => startRecording(), 1500)
           }
           
           await audio.play()
@@ -364,23 +310,21 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
         const utterance = new SpeechSynthesisUtterance(result.message)
         
         utterance.onend = () => {
-          console.log('🎤 Speech synthesis ended, checking interview state...')
-          console.log('🎤 isInterviewActiveRef.current:', isInterviewActiveRef.current)
           setIsAISpeaking(false)
-          if (isInterviewActiveRef.current) {
-            console.log('🎤 Auto-starting recording after speech synthesis...')
-            setTimeout(() => startRecording(), 300)
-          } else {
-            console.log('🚫 Interview not active, skipping auto-record')
-          }
+          setTimeout(() => {
+            const currentSessionId = sessionIdRef.current || localStorage.getItem('ivy_session_id')
+            if (currentSessionId) {
+              startRecording()
+            } else {
+              console.error('Session ID not available for recording')
+            }
+          }, 1500)
         }
         
         utterance.onerror = (e) => {
           console.error('Speech synthesis error:', e)
           setIsAISpeaking(false)
-          if (isInterviewActiveRef.current) {
-            setTimeout(() => startRecording(), 300)
-          }
+          setTimeout(() => startRecording(), 1500)
         }
         
         speechSynthesis.speak(utterance)
@@ -393,12 +337,6 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
   }
 
   const startRecording = async () => {
-    // Use ref for reliable state checking
-    if (!isInterviewActiveRef.current || isInterviewTerminated || isAnalyzing || showThankYou) {
-      console.log('🚫 Recording blocked - interview not active or terminated')
-      return
-    }
-    
     try {
       console.log('Starting recording...')
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -480,26 +418,11 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
   const sendAudioToAI = async (audioBlob) => {
     try {
       console.log('Sending audio to AI...', audioBlob.size, 'bytes')
-      
-      // CRITICAL: Check if interview is terminated - if so, do nothing
-      if (isInterviewTerminated) {
-        console.log('Interview terminated, ignoring audio input')
-        return
-      }
-      
       const currentSessionId = sessionIdRef.current || localStorage.getItem('ivy_session_id')
       console.log('Current session ID:', currentSessionId)
       
       if (!currentSessionId) {
-        console.log('No active session, stopping recording')
-        setIsRecording(false)
-        return
-      }
-      
-      // Check if interview is still active before sending
-      if (!isInterviewActiveRef.current || isInterviewTerminated) {
-        console.log('Interview no longer active, skipping AI request')
-        return
+        throw new Error('No active session - please restart interview')
       }
       
       const formData = new FormData()
@@ -521,12 +444,6 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       const result = await response.json()
       console.log('🤖 AI Response:', result.message)
       console.log('👤 User said:', result.transcription)
-      
-      // Check again if interview is still active before playing response
-      if (!isInterviewActiveRef.current || isInterviewTerminated) {
-        console.log('Interview ended during AI processing, skipping response')
-        return
-      }
       
       setIsAISpeaking(true)
       
@@ -553,22 +470,26 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
           audio.onended = () => {
             setIsAISpeaking(false)
             URL.revokeObjectURL(audioUrl)
-            if (isInterviewActiveRef.current && !isInterviewTerminated) {
-              setTimeout(() => startRecording(), 500)
-            }
+            setTimeout(() => {
+              const currentSessionId = sessionIdRef.current || localStorage.getItem('ivy_session_id')
+              if (!isRecording && isInterviewActive && currentSessionId) {
+                startRecording()
+              } else if (!currentSessionId) {
+                console.error('Session ID not available for recording')
+              }
+            }, 1500)
           }
           
           audio.onerror = (e) => {
             console.error('Audio playback error:', e)
             setIsAISpeaking(false)
-            if (isInterviewActiveRef.current && !isInterviewTerminated) {
-              setTimeout(() => startRecording(), 500)
-            }
+            setTimeout(() => {
+              if (!isRecording && isInterviewActive) startRecording()
+            }, 1500)
           }
           
           await audio.play()
         } else {
-          console.error('TTS failed, using fallback')
           throw new Error(`TTS failed: ${ttsResponse.status}`)
         }
       } catch (error) {
@@ -577,230 +498,32 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
         
         utterance.onend = () => {
           setIsAISpeaking(false)
-          if (isInterviewActiveRef.current && !isInterviewTerminated) {
-            setTimeout(() => startRecording(), 500)
-          }
+          setTimeout(() => {
+            if (!isRecording && isInterviewActive) {
+              startRecording()
+            }
+          }, 1500)
         }
         
         utterance.onerror = (e) => {
           console.error('Speech synthesis error:', e)
           setIsAISpeaking(false)
-          if (isInterviewActiveRef.current && !isInterviewTerminated) {
-            setTimeout(() => startRecording(), 500)
-          }
+          setTimeout(() => {
+            if (!isRecording && isInterviewActive) {
+              startRecording()
+            }
+          }, 1500)
         }
         
         speechSynthesis.speak(utterance)
       }
     } catch (error) {
       console.error('sendAudioToAI error:', error.message)
-      if (isInterviewActive) {
-        alert(`Communication error: ${error.message}`)
-        setTimeout(() => {
-          if (isInterviewActive) startRecording()
-        }, 3000)
-      }
+      alert(`Communication error: ${error.message}`)
+      setTimeout(() => {
+        if (!isRecording && isInterviewActive) startRecording()
+      }, 3000)
     }
-  }
-
-  // Show only Thank You section when interview is ended
-  if (showThankYou) {
-    return (
-      <div className="w-full h-full flex flex-col items-center justify-center gap-4 transition-all duration-500">
-        {/* Avatar */}
-        <div className="relative flex-shrink-0">
-          <div 
-            className="absolute inset-[-20px] rounded-full transition-all duration-500"
-            style={{
-              background: `radial-gradient(circle, ${getPersonaColor()}12 0%, transparent 70%)`,
-              opacity: 0.4
-            }}
-          />
-          
-          <div 
-            className="absolute inset-0 w-[140px] h-[140px] rounded-full transition-all duration-500"
-            style={{
-              border: `1.5px solid ${getPersonaColor()}`,
-              opacity: 0.4,
-              transform: `rotate(${rotation}deg)`,
-              transition: 'transform 0.1s linear, border-color 0.5s ease'
-            }}
-          />
-          
-          <div className="relative w-[140px] h-[140px] rounded-full flex items-center justify-center">
-            <div 
-              className="w-16 h-16 rounded-full flex items-center justify-center text-2xl transition-all duration-500 overflow-hidden"
-              style={{
-                background: `radial-gradient(circle, ${getPersonaColor()}18, transparent)`,
-              }}
-            >
-              {selectedPersona?.avatar ? (
-                <img 
-                  src={selectedPersona.avatar} 
-                  alt={selectedPersona.name}
-                  className="w-full h-full object-cover object-top"
-                />
-              ) : (
-                <span className="text-white font-bold text-lg">{selectedPersona?.name?.[0]}</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Persona Info */}
-        <div className="text-center flex-shrink-0">
-          <h3 className="text-lg font-semibold text-primary mb-1">
-            {selectedPersona?.name || 'Select Persona'}
-          </h3>
-          <p className="text-xs uppercase tracking-wider text-description mb-2">
-            {selectedPersona?.role || 'No role selected'}
-          </p>
-          
-          <div className="mb-2 flex justify-center">
-            <VoiceWaveform 
-              isActive={isRecording || isLive}
-              audioLevel={audioLevel}
-              color={getPersonaColor()}
-              isAISpeaking={isAISpeaking}
-            />
-          </div>
-          
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border transition-all duration-500" style={{ borderColor: `${getPersonaColor()}60`, background: 'transparent' }}>
-            <div className="w-1.5 h-1.5 rounded-full animate-breathe transition-all duration-500" style={{ background: getPersonaColor() }} />
-            <span className="text-xs text-secondary">{isAISpeaking ? 'AI SPEAKING' : 'READY'}</span>
-          </div>
-        </div>
-
-        {/* Thank You Content */}
-        <div className="text-center max-w-md">
-          <div className="mb-6 p-6 rounded-lg bg-[rgba(69,214,255,0.1)] border border-[rgba(69,214,255,0.2)]">
-            <h3 className="text-2xl font-semibold text-[#45D6FF] mb-3">Thank You!</h3>
-            <p className="text-base text-secondary mb-4">Thank you for taking the interview.</p>
-            <p className="text-sm text-description">You can check your analysis here</p>
-          </div>
-          <div className="flex gap-3 justify-center">
-            <button 
-              onClick={viewAnalysis}
-              className="px-6 py-3 rounded-lg font-medium text-base bg-[#45D6FF] hover:bg-[#5E6BFF] text-white transition-all"
-            >
-              View Analysis
-            </button>
-            <button 
-              onClick={startNewInterview}
-              className="px-6 py-3 rounded-lg font-medium text-base border border-[rgba(255,255,255,0.2)] text-primary hover:bg-[rgba(255,255,255,0.05)] transition-all"
-            >
-              New Interview
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Show only Analysis section when viewing analysis
-  if (analysisResult && !showThankYou) {
-    return (
-      <div className="w-full h-full flex flex-col items-center justify-center gap-4 transition-all duration-500">
-        {/* Avatar */}
-        <div className="relative flex-shrink-0">
-          <div 
-            className="absolute inset-[-15px] rounded-full transition-all duration-500"
-            style={{
-              background: `radial-gradient(circle, ${getPersonaColor()}12 0%, transparent 70%)`,
-              opacity: 0.4
-            }}
-          />
-          
-          <div 
-            className="absolute inset-0 w-[100px] h-[100px] rounded-full transition-all duration-500"
-            style={{
-              border: `1.5px solid ${getPersonaColor()}`,
-              opacity: 0.4,
-              transform: `rotate(${rotation}deg)`,
-              transition: 'transform 0.1s linear, border-color 0.5s ease'
-            }}
-          />
-          
-          <div className="relative w-[100px] h-[100px] rounded-full flex items-center justify-center">
-            <div 
-              className="w-12 h-12 rounded-full flex items-center justify-center text-lg transition-all duration-500 overflow-hidden"
-              style={{
-                background: `radial-gradient(circle, ${getPersonaColor()}18, transparent)`,
-              }}
-            >
-              {selectedPersona?.avatar ? (
-                <img 
-                  src={selectedPersona.avatar} 
-                  alt={selectedPersona.name}
-                  className="w-full h-full object-cover object-top"
-                />
-              ) : (
-                <span className="text-white font-bold text-sm">{selectedPersona?.name?.[0]}</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Persona Info */}
-        <div className="text-center flex-shrink-0">
-          <h3 className="text-base font-semibold text-primary mb-1">
-            {selectedPersona?.name || 'Select Persona'}
-          </h3>
-          <p className="text-xs uppercase tracking-wider text-description mb-2">
-            {selectedPersona?.role || 'No role selected'}
-          </p>
-          
-          <div className="mb-2 flex justify-center scale-75">
-            <VoiceWaveform 
-              isActive={isRecording || isLive}
-              audioLevel={audioLevel}
-              color={getPersonaColor()}
-              isAISpeaking={isAISpeaking}
-            />
-          </div>
-          
-          <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full border transition-all duration-500" style={{ borderColor: `${getPersonaColor()}60`, background: 'transparent' }}>
-            <div className="w-1 h-1 rounded-full animate-breathe transition-all duration-500" style={{ background: getPersonaColor() }} />
-            <span className="text-xs text-secondary">{isAISpeaking ? 'AI SPEAKING' : 'READY'}</span>
-          </div>
-        </div>
-
-        {/* Analysis Content */}
-        <div className="w-full max-w-md max-h-[50vh] overflow-y-auto">
-          <div className="p-4 rounded-lg bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.1)]">
-            <h3 className="text-lg font-semibold text-[#45D6FF] mb-3">Interview Analysis</h3>
-            <div className="space-y-3">
-              <div>
-                <span className="text-sm font-medium text-primary">Overall Score: </span>
-                <span className="text-lg font-bold text-[#45D6FF]">{analysisResult.overall_score}/100</span>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-primary block mb-1">Strengths:</span>
-                <p className="text-xs text-secondary">{analysisResult.strengths}</p>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-primary block mb-1">Areas for Improvement:</span>
-                <p className="text-xs text-secondary">{analysisResult.improvements}</p>
-              </div>
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button 
-                onClick={() => setShowThankYou(true)}
-                className="px-4 py-2 rounded-lg font-medium text-sm border border-[rgba(255,255,255,0.2)] text-primary hover:bg-[rgba(255,255,255,0.05)] transition-all"
-              >
-                Back
-              </button>
-              <button 
-                onClick={startNewInterview}
-                className="px-4 py-2 rounded-lg font-medium text-sm bg-green-600 hover:bg-green-700 text-white transition-all"
-              >
-                Start New Interview
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   return (
@@ -915,7 +638,55 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
 
       {/* Controls */}
       <div className="flex gap-2 items-center flex-shrink-0">
-        {!isInterviewActive ? (
+        {showThankYou ? (
+          <div className="text-center">
+            <div className="mb-4 p-4 rounded-lg bg-[rgba(69,214,255,0.1)] border border-[rgba(69,214,255,0.2)]">
+              <h3 className="text-lg font-semibold text-[#45D6FF] mb-2">Thank You!</h3>
+              <p className="text-sm text-secondary mb-3">Thank you for taking the interview.</p>
+              <p className="text-xs text-description">You can check your analysis here</p>
+            </div>
+            <div className="flex gap-2 justify-center">
+              <button 
+                onClick={viewAnalysis}
+                className="px-4 py-2 rounded-lg font-medium text-sm bg-[#45D6FF] hover:bg-[#5E6BFF] text-white transition-all"
+              >
+                View Analysis
+              </button>
+              <button 
+                onClick={startNewInterview}
+                className="px-4 py-2 rounded-lg font-medium text-sm border border-[rgba(255,255,255,0.2)] text-primary hover:bg-[rgba(255,255,255,0.05)] transition-all"
+              >
+                New Interview
+              </button>
+            </div>
+          </div>
+        ) : analysisResult ? (
+          <div className="w-full max-w-md max-h-[70vh] overflow-y-auto">
+            <div className="p-4 rounded-lg bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.1)]">
+              <h3 className="text-lg font-semibold text-[#45D6FF] mb-3">Interview Analysis</h3>
+              <div className="space-y-3">
+                <div>
+                  <span className="text-sm font-medium text-primary">Overall Score: </span>
+                  <span className="text-lg font-bold text-[#45D6FF]">{analysisResult.overall_score}/100</span>
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-primary block mb-1">Strengths:</span>
+                  <p className="text-xs text-secondary">{analysisResult.strengths}</p>
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-primary block mb-1">Areas for Improvement:</span>
+                  <p className="text-xs text-secondary">{analysisResult.improvements}</p>
+                </div>
+              </div>
+              <button 
+                onClick={startNewInterview}
+                className="w-full mt-4 px-4 py-2 rounded-lg font-medium text-sm bg-green-600 hover:bg-green-700 text-white transition-all"
+              >
+                Start New Interview
+              </button>
+            </div>
+          </div>
+        ) : !isInterviewActive ? (
           <>
             <button 
               onClick={onOpenVoiceLab}

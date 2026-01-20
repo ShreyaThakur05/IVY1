@@ -49,12 +49,13 @@ ${history.map(msg => `${msg.role === 'user' ? 'Candidate' : 'Interviewer'}: ${ms
 CANDIDATE'S LATEST RESPONSE: "${userInput}"
 
 INSTRUCTIONS:
-- Ask ONE clear, relevant follow-up question based on the candidate's last answer and the Context.
-- Keep your response conversational but professional.
-- If the candidate's answer is vague, ask them to elaborate with specific examples.
-- Reference specific details from their response or the context.
-- Maximum response length: 2 sentences.
-- After your response, STOP and wait for user input.
+- If there's document content in the context, ask specific questions about it
+- Ask ONE clear, relevant follow-up question based on the candidate's last answer and the Context
+- Reference specific details from the document or topic when possible
+- If the candidate's answer is vague, ask them to elaborate with specific examples
+- Keep your response conversational but professional
+- Maximum response length: 2 sentences
+- After your response, STOP and wait for user input
 
 Generate your follow-up question:`;
 

@@ -56,7 +56,14 @@ export default function Home() {
     try {
       const { data, error } = await supabase
         .from('sessions')
-        .select('*')
+        .select(`
+          *,
+          messages (
+            role,
+            content,
+            message_order
+          )
+        `)
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
       
@@ -67,9 +74,16 @@ export default function Home() {
         title: session.title || `Interview ${session.id}`,
         persona: session.persona_name,
         date: new Date(session.created_at),
-        messageCount: session.message_count || 0
+        messageCount: session.message_count || 0,
+        analysis: session.analysis,
+        conversation: session.messages
+          ? session.messages
+              .sort((a, b) => a.message_order - b.message_order)
+              .map(msg => ({ role: msg.role, content: msg.content }))
+          : []
       }))
       
+      console.log('Current conversations:', formattedConversations)
       setConversations(formattedConversations)
     } catch (error) {
       console.error('Error loading conversations:', error)
@@ -80,18 +94,40 @@ export default function Home() {
     if (!user) return
     
     try {
-      const { data, error } = await supabase
+      // Save session first
+      const { data: sessionData, error: sessionError } = await supabase
         .from('sessions')
-        .insert({
+        .upsert({
+          id: conversation.session_id,
           user_id: user.id,
           title: conversation.title,
           persona_name: conversation.persona,
-          message_count: conversation.messageCount
-        })
+          message_count: conversation.messageCount,
+          analysis: conversation.analysis
+        }, { onConflict: 'id' })
         .select()
       
-      if (error) throw error
-      return data[0]
+      if (sessionError) throw sessionError
+      
+      // Save individual messages if they exist
+      if (conversation.conversation && conversation.conversation.length > 0) {
+        const messages = conversation.conversation.map((msg, index) => ({
+          session_id: conversation.session_id,
+          role: msg.role,
+          content: msg.content,
+          message_order: index
+        }))
+        
+        const { error: messagesError } = await supabase
+          .from('messages')
+          .upsert(messages, { onConflict: 'session_id,message_order' })
+        
+        if (messagesError) {
+          console.warn('Failed to save messages:', messagesError)
+        }
+      }
+      
+      return sessionData[0]
     } catch (error) {
       console.error('Error saving conversation:', error)
     }

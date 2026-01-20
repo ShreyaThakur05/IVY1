@@ -99,7 +99,7 @@ export default function HistoryPanel({ isOpen, onClose, conversations, activeCon
                   {viewingConversation.analysis && (
                     <>
                       <span>•</span>
-                      <span className="text-[#45D6FF]">Score: {viewingConversation.analysis.overall_score}/10</span>
+                      <span className="text-[#45D6FF]">Score: {viewingConversation.analysis.overall_score}/100</span>
                     </>
                   )}
                 </div>
@@ -194,7 +194,7 @@ export default function HistoryPanel({ isOpen, onClose, conversations, activeCon
                       {conv.analysis && (
                         <>
                           <span>•</span>
-                          <span className="text-[#45D6FF]">Score: {conv.analysis.overall_score}/10</span>
+                          <span className="text-[#45D6FF]">Score: {conv.analysis.overall_score}/100</span>
                         </>
                       )}
                     </div>
