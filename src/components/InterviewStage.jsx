@@ -158,7 +158,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
         throw new Error('No session to analyze')
       }
       
-      const response = await fetch(${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}}/api/interview/analyze`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/interview/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: currentSessionId })
@@ -251,7 +251,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
     
     try {
       // Check backend health first
-      const healthCheck = await fetch(${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}}/health`)
+      const healthCheck = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/health`)
       if (!healthCheck.ok) {
         throw new Error('Backend service unavailable')
       }
