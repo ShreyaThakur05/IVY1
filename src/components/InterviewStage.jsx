@@ -158,7 +158,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
         throw new Error('No session to analyze')
       }
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/interview/analyze`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}'}/api/interview/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: currentSessionId })
@@ -251,7 +251,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
     
     try {
       // Check backend health first
-      const healthCheck = await fetch('http://localhost:3001/health')
+      const healthCheck = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}'}/health`)
       if (!healthCheck.ok) {
         throw new Error('Backend service unavailable')
       }
@@ -280,7 +280,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       }
       console.log('===============================\n');
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/interview/start`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}'}/api/interview/start`, {
         method: 'POST',
         body: formData
       })
@@ -323,7 +323,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       
       // Use backend TTS with custom voice instead of browser speech synthesis
       try {
-        const ttsResponse = await fetch('http://localhost:3001/api/tts', {
+        const ttsResponse = await fetch('`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/tts', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -508,7 +508,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       formData.append('audio_file', audioBlob, 'user_response.wav')
       formData.append('session_id', currentSessionId)
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/interview/chat`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}'}/api/interview/chat`, {
         method: 'POST',
         body: formData
       })
@@ -534,7 +534,7 @@ export default function InterviewStage({ selectedPersona, onStartSpeaking, isLiv
       
       // Use backend TTS with custom voice instead of browser speech synthesis
       try {
-        const ttsResponse = await fetch('http://localhost:3001/api/tts', {
+        const ttsResponse = await fetch('`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/tts', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
